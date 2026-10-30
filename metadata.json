@@ -1,0 +1,6 @@
+{
+  "name": "AI-TRAVELMATE",
+  "description": "Intelligent AI-Powered Travel Planning and Recommendation System featuring transparent scoring, weather intelligence, route calculations, machine learning traffic prediction, and interactive maps.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

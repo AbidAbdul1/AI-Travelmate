@@ -1,0 +1,1053 @@
+AI-TRAVELMATE
+
+Software Requirements Specification (SRS)
+
+Version: 1.0
+
+Project Type: AI-Powered Travel Planning and Recommendation Web Application
+
+Document Standard: Structured Software Requirements Specification
+
+Proposed Frontend: React and TypeScript
+
+Proposed Backend: Python and FastAPI
+
+Proposed Database: PostgreSQL
+
+Initial Pilot Location: Vijayawada, Andhra Pradesh, India (to be confirmed)
+
+---
+
+1. Introduction
+
+1.1 Purpose
+
+This Software Requirements Specification defines the functional and non-functional requirements of AI-TRAVELMATE, an intelligent travel planning and recommendation system.
+
+The document describes the system's purpose, scope, architecture, interfaces, data requirements, user interactions, constraints, and testing criteria.
+
+It is intended for project developers, testers, evaluators, and other stakeholders involved in the design, implementation, and validation of the application.
+
+1.2 Project Scope
+
+AI-TRAVELMATE is a web application that helps users discover destinations, receive personalized travel recommendations, obtain weather information, calculate routes, and generate travel itineraries.
+
+The application will combine external data sources with a recommendation engine, a traffic prediction component where suitable data is available, and an AI assistant that explains the resulting recommendations.
+
+The initial release will focus on a limited, testable set of features rather than a complete commercial travel-booking platform.
+
+The system will not claim to provide live traffic information unless it is connected to a reliable and permitted live traffic data source.
+
+1.3 Intended Audience
+
+This document is intended for:
+
+- Frontend developers.
+- Backend developers.
+- Machine learning developers.
+- Database designers.
+- Software testers.
+- Academic project supervisors.
+- Project evaluators and stakeholders.
+
+1.4 Definitions and Abbreviations
+
+AI: Artificial Intelligence.
+
+API: Application Programming Interface.
+
+MVP: Minimum Viable Product.
+
+SRS: Software Requirements Specification.
+
+ML: Machine Learning.
+
+POI: Point of Interest, such as a tourist attraction, park, restaurant, or museum.
+
+ETA: Estimated Time of Arrival.
+
+OSM: OpenStreetMap.
+
+OSRM: Open Source Routing Machine.
+
+REST: Representational State Transfer.
+
+MAE: Mean Absolute Error.
+
+RMSE: Root Mean Squared Error.
+
+Live Traffic: Traffic information obtained from a current traffic observation or a provider's live traffic feed.
+
+Traffic Prediction: An estimate of future traffic conditions generated from historical and/or current input data.
+
+1.5 References
+
+- Open-Meteo: https://open-meteo.com/
+- OpenStreetMap: https://www.openstreetmap.org/
+- Overpass API: https://overpass-api.de/
+- OSRM: https://project-osrm.org/
+- FastAPI: https://fastapi.tiangolo.com/
+- React: https://react.dev/
+- Scikit-learn: https://scikit-learn.org/
+- XGBoost: https://xgboost.readthedocs.io/
+- PostgreSQL: https://www.postgresql.org/
+- Ollama: https://ollama.com/
+
+The applicable usage policies, licenses, attribution requirements, and rate limits of each external service must be reviewed before deployment.
+
+---
+
+2. Overall Description
+
+2.1 Product Perspective
+
+AI-TRAVELMATE will be developed as a web-based application with a frontend, backend API, data integration layer, intelligence layer, and database.
+
+The frontend will provide the user interface for entering preferences, viewing recommendations, exploring maps, and managing itineraries.
+
+The backend will process requests, retrieve external data, apply recommendation and itinerary logic, and coordinate machine learning components.
+
+The system will store relevant application records in a database where persistence is required.
+
+2.2 Product Functions
+
+The main system functions are:
+
+1. Destination search and discovery.
+2. Personalized destination recommendations.
+3. Weather retrieval and weather-aware suggestions.
+4. Route calculation and estimated travel duration.
+5. Traffic prediction when suitable data is available.
+6. AI-assisted travel explanations.
+7. Itinerary generation and editing.
+8. Saved trip management, if persistence is enabled.
+9. Error handling and data-source transparency.
+
+2.3 User Classes
+
+General User
+
+Can search destinations, provide preferences, explore recommendations, and create itineraries.
+
+Registered User
+
+If account functionality is implemented, can save and retrieve personal itineraries and preferences.
+
+Administrator or Developer
+
+Can configure application settings, manage data sources, inspect errors, and maintain model versions.
+
+Administrative functionality is primarily intended for development and maintenance in the MVP.
+
+2.4 Operating Environment
+
+The application is intended to operate in:
+
+- Modern desktop web browsers.
+- Modern mobile web browsers.
+- A frontend development environment supporting React and TypeScript.
+- A Python environment supporting FastAPI and the selected ML libraries.
+- A PostgreSQL database environment.
+
+The application may use external internet services for maps, weather, routing, and points of interest.
+
+A local AI model may require additional memory, storage, and processing capacity.
+
+2.5 Design and Implementation Constraints
+
+- The system should prioritize free or open-source technologies.
+- External APIs may have usage limits and service availability constraints.
+- OpenStreetMap data does not automatically include live traffic observations.
+- Basic OSRM routing does not provide live congestion information.
+- Traffic prediction quality depends on the availability and quality of representative training data.
+- Local language model performance depends on the selected model and available hardware.
+- The system must comply with relevant data licenses, API terms, attribution rules, and privacy requirements.
+
+2.6 Assumptions and Dependencies
+
+- The user has access to a compatible browser.
+- Internet connectivity is available for external data retrieval.
+- Selected services remain available and permit the intended usage.
+- Geographical coordinates are available or can be resolved for supported destinations.
+- Suitable traffic data may not be available for every location.
+- The availability of local traffic data must be verified before local traffic prediction is treated as a supported feature.
+
+---
+
+3. External Interface Requirements
+
+3.1 User Interface
+
+The user interface shall provide the following pages or sections:
+
+- Home or dashboard.
+- Destination search.
+- Travel preference form.
+- Destination recommendation results.
+- Interactive map.
+- Weather information panel.
+- Route details.
+- Itinerary builder.
+- AI travel assistant.
+- Saved trips, if account and persistence functionality is implemented.
+
+The interface should clearly distinguish confirmed data, estimates, predictions, and unavailable information.
+
+3.2 Software Interfaces
+
+The application may integrate with the following services:
+
+Weather service: Open-Meteo for supported weather observations and forecasts.
+
+Geographical data: OpenStreetMap and permitted access mechanisms for destination and POI information.
+
+POI retrieval: Overpass API or another suitable data source.
+
+Routing service: OSRM or a compatible routing engine.
+
+Machine learning: Scikit-learn or XGBoost.
+
+AI assistant: Ollama and a compatible open-weight model, if supported by the deployment environment.
+
+Database: PostgreSQL.
+
+All integrations must handle network errors, invalid responses, timeouts, and service rate limits.
+
+3.3 Communication Interfaces
+
+The frontend shall communicate with the backend through HTTP-based REST endpoints.
+
+JSON shall be used as the default request and response format.
+
+HTTPS should be used for deployed environments.
+
+External API credentials, if required by a selected service, must be stored securely on the backend and must not be exposed in frontend source code.
+
+3.4 Hardware Interfaces
+
+No specialized hardware is required for the basic MVP.
+
+A local language model may require additional CPU, RAM, storage, or GPU resources depending on the selected model.
+
+---
+
+4. Functional Requirements
+
+4.1 Destination Search
+
+FR-01: The system shall allow users to enter a destination name or location.
+
+FR-02: The system shall return relevant destination or point-of-interest results when supported data is available.
+
+FR-03: The system shall allow users to filter results by supported categories.
+
+FR-04: The system shall display available destination information, including name, category, coordinates, and other relevant metadata.
+
+FR-05: The system shall inform users when a search produces no results.
+
+4.2 Travel Preferences
+
+FR-06: The system shall allow users to enter a starting location.
+
+FR-07: The system shall allow users to specify travel interests.
+
+FR-08: The system shall allow users to specify an approximate budget.
+
+FR-09: The system shall allow users to specify trip duration or travel dates.
+
+FR-10: The system shall validate required inputs before processing a recommendation request.
+
+FR-11: The system shall allow users to revise their preferences and request updated recommendations.
+
+4.3 Personalized Recommendations
+
+FR-12: The system shall calculate recommendation scores for candidate destinations.
+
+FR-13: The system shall rank destinations according to the selected preferences and available information.
+
+FR-14: The recommendation algorithm shall use configurable weights for preference match, budget suitability, travel-time suitability, and weather suitability.
+
+FR-15: The system shall explain the primary reasons for a recommendation.
+
+FR-16: The system shall handle missing destination information without silently treating unknown values as confirmed negative values.
+
+FR-17: The system shall display a suitable message when insufficient information is available to generate meaningful recommendations.
+
+4.4 Weather Information
+
+FR-18: The system shall retrieve weather information for a selected destination when supported by the chosen weather service.
+
+FR-19: The system shall display available weather variables such as temperature and precipitation information.
+
+FR-20: The system shall display forecast dates or timestamps when available.
+
+FR-21: The system shall use available weather information to influence relevant outdoor-activity recommendations.
+
+FR-22: The system shall display an appropriate message when weather data is unavailable or cannot be retrieved.
+
+FR-23: The system shall not present expired or unavailable weather data as verified current information.
+
+4.5 Route Planning
+
+FR-24: The system shall allow users to select a starting point and destination.
+
+FR-25: The system shall request route calculations from the configured routing service.
+
+FR-26: The system shall display the calculated route on a map when route geometry is available.
+
+FR-27: The system shall display estimated distance and journey duration when returned by the routing service.
+
+FR-28: The system shall support the creation of an itinerary containing multiple destinations.
+
+FR-29: The system shall handle unavailable routes and invalid coordinates gracefully.
+
+FR-30: The system shall distinguish ordinary route-duration estimates from traffic-adjusted travel times.
+
+4.6 Traffic Prediction
+
+FR-31: The system shall support a traffic prediction component when a suitable model and compatible input data are available.
+
+FR-32: The prediction component shall accept the features required by its trained model.
+
+FR-33: The system shall produce a predicted traffic value or category according to the model's defined output.
+
+FR-34: The system shall identify predicted traffic results as predictions.
+
+FR-35: The system shall identify live traffic results as live only when supported by a reliable current traffic data source.
+
+FR-36: The system shall not label historical averages, simulated data, or model predictions as live observations.
+
+FR-37: The system shall record the data source and relevant timestamp for traffic observations when such information is available.
+
+FR-38: The system shall provide an appropriate fallback message when the required traffic input data is unavailable.
+
+FR-39: The model shall be evaluated against a suitable baseline before its performance is described as improved or accurate.
+
+FR-40: Traffic prediction results shall not be represented as guaranteed journey times.
+
+4.7 AI Travel Assistant
+
+FR-41: The system shall accept travel-related user questions through a supported interface.
+
+FR-42: The assistant shall generate explanations based on available destination, route, weather, and recommendation data.
+
+FR-43: The assistant shall use the selected language model or another configured generation method.
+
+FR-44: The assistant shall not invent unavailable live traffic conditions, weather observations, destination details, or service responses.
+
+FR-45: The assistant shall communicate uncertainty or data limitations when relevant.
+
+FR-46: The system shall handle AI model errors and unavailable model services gracefully.
+
+4.8 Itinerary Generation
+
+FR-47: The system shall generate a proposed itinerary from selected destinations and user preferences.
+
+FR-48: The itinerary shall consider available route distances and estimated journey durations.
+
+FR-49: The itinerary shall consider weather information when relevant and available.
+
+FR-50: The system shall allow users to add or remove destinations from a proposed itinerary.
+
+FR-51: The system shall allow users to review and modify the proposed order of destinations.
+
+FR-52: The system shall indicate when opening hours or other planning information has not been verified.
+
+4.9 Saved Trips
+
+FR-53: If persistence functionality is enabled, the system shall allow users to save an itinerary.
+
+FR-54: If account functionality is enabled, the system shall associate saved trips with the appropriate authenticated user.
+
+FR-55: The system shall allow authorized users to retrieve and update their saved itineraries.
+
+FR-56: The system shall prevent one authenticated user from accessing another user's private saved trips.
+
+Account and saved-trip functionality may be deferred if it is not required for the initial demonstration.
+
+4.10 Error Handling
+
+FR-57: The system shall validate user input.
+
+FR-58: The system shall handle external API failures without crashing the entire application.
+
+FR-59: The system shall return understandable error messages for failed requests.
+
+FR-60: The system shall log relevant backend errors without exposing sensitive information.
+
+FR-61: The system shall distinguish unavailable data from valid empty results.
+
+---
+
+5. Non-Functional Requirements
+
+5.1 Performance
+
+NFR-01: The system should return ordinary backend responses promptly under normal development conditions.
+
+NFR-02: The system should use timeouts for external API requests.
+
+NFR-03: The system should avoid unnecessary repeated API calls through appropriate caching where permitted.
+
+NFR-04: The system should avoid blocking ordinary application interactions while a longer AI or ML task is running.
+
+Performance targets should be measured and finalized using the actual deployment environment.
+
+5.2 Reliability
+
+NFR-05: External service failures shall not cause an unhandled application crash.
+
+NFR-06: The system shall provide suitable fallback behavior when optional services are unavailable.
+
+NFR-07: The system shall handle malformed external responses safely.
+
+5.3 Usability
+
+NFR-08: The application shall use clear navigation and understandable labels.
+
+NFR-09: The interface shall be usable on common desktop and mobile screen sizes.
+
+NFR-10: Maps, weather data, estimates, and predictions shall be presented in a clear and distinguishable manner.
+
+NFR-11: Error messages shall explain the problem and, where practical, suggest a next step.
+
+5.4 Security
+
+NFR-12: Secrets and API credentials shall not be committed to public source repositories.
+
+NFR-13: Backend endpoints shall validate incoming requests.
+
+NFR-14: Database access shall use appropriate access controls.
+
+NFR-15: If authentication is implemented, passwords and session credentials shall be handled using established security practices.
+
+NFR-16: User-specific data shall be protected against unauthorized access.
+
+NFR-17: Logs shall avoid unnecessary exposure of personal information and credentials.
+
+5.5 Privacy
+
+NFR-18: The application shall collect only information necessary for its stated functionality.
+
+NFR-19: If location information is requested from the device, the application shall obtain appropriate permission.
+
+NFR-20: The application shall explain relevant data collection and retention practices before public deployment.
+
+5.6 Maintainability
+
+NFR-21: Frontend, backend, database, and ML components should be separated into maintainable modules.
+
+NFR-22: API endpoints and data models shall be documented.
+
+NFR-23: Model versions, data sources, and evaluation results should be recorded.
+
+NFR-24: The application shall provide setup instructions sufficient for another developer to run the project.
+
+5.7 Scalability
+
+NFR-25: The architecture should allow additional data providers and destination categories to be integrated later.
+
+NFR-26: The system should support replacing a public demonstration API with a more suitable hosted or self-managed service.
+
+5.8 Data Integrity
+
+NFR-27: Coordinates, timestamps, distances, and durations shall use consistent representations.
+
+NFR-28: Prediction results shall be associated with the model version and relevant input context where practical.
+
+NFR-29: Missing, stale, and failed data retrievals shall be represented explicitly.
+
+5.9 Accessibility
+
+NFR-30: Interactive controls should have understandable labels and keyboard-accessible behavior where practical.
+
+NFR-31: Important information shall not be conveyed by color alone.
+
+---
+
+6. System Architecture
+
+6.1 Frontend Layer
+
+Technology: React, TypeScript, and a suitable styling framework.
+
+Responsibilities:
+
+- Collect user input.
+- Display destination search results.
+- Show interactive maps.
+- Present weather and route information.
+- Display recommendation scores and explanations.
+- Allow users to create and edit itineraries.
+- Communicate with the backend API.
+
+6.2 Backend Layer
+
+Technology: Python and FastAPI.
+
+Responsibilities:
+
+- Validate incoming requests.
+- Retrieve data from external services.
+- Apply recommendation logic.
+- Coordinate traffic prediction.
+- Generate or request AI explanations.
+- Manage persistence where enabled.
+- Return consistent JSON responses.
+- Handle errors and service timeouts.
+
+6.3 Data Integration Layer
+
+Responsibilities:
+
+- Retrieve weather information.
+- Retrieve destination and POI information.
+- Calculate routes.
+- Validate external responses.
+- Track source and retrieval timestamps where available.
+- Apply permitted caching.
+
+6.4 Intelligence Layer
+
+Components:
+
+- Recommendation engine.
+- Itinerary generation logic.
+- Traffic prediction model.
+- AI explanation service.
+
+Each component shall have a clearly defined input and output contract.
+
+6.5 Database Layer
+
+Technology: PostgreSQL.
+
+Responsibilities:
+
+- Store supported application records.
+- Persist user preferences where required.
+- Store saved itineraries if implemented.
+- Store destination metadata and model evaluation information where appropriate.
+
+---
+
+7. Proposed Data Model
+
+The following entities describe a possible initial database design. The final schema may be adjusted during implementation.
+
+7.1 User
+
+Fields:
+
+- user_id
+- name, if collected
+- email, if account functionality is enabled
+- created_at
+
+Purpose: Store account information when registration is implemented.
+
+7.2 UserPreference
+
+Fields:
+
+- preference_id
+- user_id, if applicable
+- interests
+- budget_range
+- trip_duration
+- preferred_activities
+- updated_at
+
+Purpose: Store preferences used by the recommendation engine.
+
+7.3 Destination
+
+Fields:
+
+- destination_id
+- name
+- category
+- latitude
+- longitude
+- description, when available
+- data_source
+- source_updated_at, when available
+
+Purpose: Represent a destination or point of interest.
+
+7.4 Itinerary
+
+Fields:
+
+- itinerary_id
+- user_id, if applicable
+- title
+- start_date, if applicable
+- duration
+- created_at
+- updated_at
+
+Purpose: Represent a planned trip.
+
+7.5 ItineraryItem
+
+Fields:
+
+- itinerary_item_id
+- itinerary_id
+- destination_id
+- sequence_number
+- planned_arrival, if applicable
+- notes
+
+Purpose: Store the destinations and their order within an itinerary.
+
+7.6 WeatherRecord
+
+Fields:
+
+- weather_record_id
+- destination_id or coordinates
+- observation_or_forecast_type
+- temperature, if available
+- precipitation information, if available
+- valid_time
+- retrieval_time
+- data_source
+
+Purpose: Store weather information where persistence or caching is needed.
+
+7.7 TrafficRecord
+
+Fields:
+
+- traffic_record_id
+- road_segment_id or route identifier
+- observed_or_predicted_value
+- data_type
+- observation_time, if applicable
+- prediction_time, if applicable
+- data_source
+- model_version, if predicted
+
+Purpose: Distinguish measured traffic observations from predicted values.
+
+7.8 RecommendationRecord
+
+Fields:
+
+- recommendation_id
+- destination_id
+- preference_match_score
+- budget_score
+- travel_time_score
+- weather_score
+- final_score
+- generated_at
+
+Purpose: Store recommendation results when logging or persistence is needed.
+
+---
+
+8. API Requirements
+
+The following endpoints are proposed examples. They describe the intended API organization and may be adjusted during implementation.
+
+8.1 Destination Search
+
+Endpoint: "GET /api/destinations/search"
+
+Possible query parameters:
+
+- "q"
+- "category"
+- "latitude"
+- "longitude"
+- "radius"
+
+Expected response: A list of matching destinations with available metadata.
+
+8.2 Weather
+
+Endpoint: "GET /api/weather"
+
+Possible query parameters:
+
+- "latitude"
+- "longitude"
+- "date", where supported
+
+Expected response: Available weather observations or forecast data with timestamps and source information.
+
+8.3 Route Calculation
+
+Endpoint: "POST /api/routes"
+
+Possible request fields:
+
+- "origin"
+- "destination"
+- "travel_mode", if supported
+
+Expected response: Route geometry, distance, and estimated duration when available.
+
+8.4 Recommendations
+
+Endpoint: "POST /api/recommendations"
+
+Possible request fields:
+
+- "origin"
+- "interests"
+- "budget"
+- "duration"
+- "travel_dates"
+
+Expected response: Ranked destinations, scores, and recommendation explanations.
+
+8.5 Traffic Prediction
+
+Endpoint: "POST /api/traffic/predict"
+
+Possible request fields:
+
+- "road_segment_id" or supported route identifier
+- "prediction_time"
+- "available_features"
+
+Expected response: Predicted traffic value or category, model version, and available uncertainty information.
+
+The endpoint shall return an appropriate unavailable-data response when required features are missing.
+
+8.6 Itinerary Generation
+
+Endpoint: "POST /api/itineraries/generate"
+
+Possible request fields:
+
+- "origin"
+- "destination_ids"
+- "duration"
+- "preferences"
+- "travel_dates"
+
+Expected response: A proposed ordered itinerary with available route and weather information.
+
+8.7 AI Assistant
+
+Endpoint: "POST /api/assistant/chat"
+
+Possible request fields:
+
+- "message"
+- "trip_context", where applicable
+
+Expected response: An explanation or travel suggestion grounded in the available application context.
+
+8.8 Error Response Format
+
+A consistent error response should contain:
+
+- Error code.
+- Human-readable message.
+- Optional details that do not expose sensitive information.
+
+Example:
+
+{
+  "error": {
+    "code": "WEATHER_SERVICE_UNAVAILABLE",
+    "message": "Weather information is temporarily unavailable."
+  }
+}
+
+---
+
+9. Use Cases
+
+Use Case 1: Discover Destinations
+
+Actor: General user.
+
+Precondition: The application is accessible.
+
+Main flow:
+
+1. The user opens destination search.
+2. The user enters a location or destination name.
+3. The system retrieves matching results.
+4. The system displays available destination information.
+5. The user selects a destination.
+
+Alternative flow: If no results are found, the system displays an appropriate message.
+
+Postcondition: The user can view a selected destination.
+
+Use Case 2: Receive Personalized Recommendations
+
+Actor: General user.
+
+Precondition: The user can provide basic travel preferences.
+
+Main flow:
+
+1. The user enters a starting location.
+2. The user selects interests.
+3. The user specifies a budget and trip duration.
+4. The system retrieves available candidate destinations.
+5. The recommendation engine calculates scores.
+6. The system displays ranked results and explanations.
+
+Alternative flow: If insufficient data is available, the system requests additional information or displays a limitation message.
+
+Postcondition: The user receives a ranked list of available recommendations.
+
+Use Case 3: View Weather and Route Information
+
+Actor: General user.
+
+Precondition: A destination has been selected.
+
+Main flow:
+
+1. The user opens destination details.
+2. The system requests available weather information.
+3. The system calculates a route when an origin is provided.
+4. The system displays available weather, distance, and estimated duration.
+5. The user reviews the information.
+
+Alternative flow: The system displays a service-unavailable message if an external request fails.
+
+Postcondition: The user can review the available travel information.
+
+Use Case 4: Generate an Itinerary
+
+Actor: General user.
+
+Precondition: The user has supplied a starting location, trip duration, and destination preferences.
+
+Main flow:
+
+1. The user requests an itinerary.
+2. The system selects suitable destinations.
+3. The system evaluates route distances and estimated durations.
+4. The system considers weather information when available.
+5. The system creates a proposed itinerary.
+6. The user reviews and modifies the itinerary.
+
+Postcondition: A proposed itinerary is available for review or saving.
+
+Use Case 5: Request Traffic Prediction
+
+Actor: General user or itinerary component.
+
+Precondition: A compatible prediction model and sufficient input data are available.
+
+Main flow:
+
+1. The system identifies the relevant road segment or route.
+2. The system prepares the required model inputs.
+3. The model generates a prediction.
+4. The system returns the estimate with its prediction label and relevant metadata.
+5. The user reviews the predicted conditions.
+
+Alternative flow: If the model or required input data is unavailable, the system communicates that no reliable prediction can be produced.
+
+Postcondition: The system displays a prediction or a clear unavailability message.
+
+---
+
+10. Security and Privacy Requirements
+
+The system shall:
+
+- Store credentials securely.
+- Avoid exposing private API keys in frontend code.
+- Validate user input on the backend.
+- Use secure database access practices.
+- Apply authorization checks if user accounts are implemented.
+- Restrict access to private saved itineraries.
+- Avoid logging passwords, API keys, and unnecessary personal data.
+- Request permission before accessing device location.
+- Document the handling of stored user information.
+
+Public deployment must include a review of applicable privacy, security, and external-service requirements.
+
+---
+
+11. Error Handling and Recovery
+
+11.1 Network Failure
+
+The application shall show a clear message when an external service cannot be reached.
+
+11.2 Rate Limit Exceeded
+
+The application shall respect provider rate limits and may retry after an appropriate delay where permitted.
+
+11.3 Invalid User Input
+
+The system shall reject invalid coordinates, malformed requests, or unsupported parameters with an understandable message.
+
+11.4 Missing Data
+
+The system shall identify missing information instead of fabricating values.
+
+11.5 Traffic Model Failure
+
+The system shall indicate that a prediction is unavailable if the model fails or required input features are missing.
+
+11.6 AI Model Failure
+
+The application shall communicate when the AI assistant is unavailable and retain access to other application features where possible.
+
+11.7 Database Failure
+
+The application shall return a suitable error response when persistence operations cannot be completed. It shall not report a save operation as successful if the database write fails.
+
+---
+
+12. Testing Requirements
+
+12.1 Unit Testing
+
+Test individual components, including:
+
+- Input validation.
+- Recommendation scoring.
+- Weather-response processing.
+- Route-response processing.
+- Traffic feature preparation.
+- Traffic prediction output handling.
+- Itinerary ordering.
+
+12.2 Integration Testing
+
+Test:
+
+- Frontend-to-backend communication.
+- Backend-to-weather-service communication.
+- Backend-to-routing-service communication.
+- Destination data retrieval.
+- Database persistence where implemented.
+- AI model integration.
+- Traffic prediction integration.
+
+12.3 Functional Testing
+
+Verify that users can search destinations, enter preferences, obtain recommendations, review route and weather information, and generate itineraries.
+
+12.4 Performance Testing
+
+Measure response time and resource usage under representative test conditions.
+
+12.5 Security Testing
+
+Test input validation, access control where implemented, credential handling, and protection of private saved data.
+
+12.6 Machine Learning Evaluation
+
+For traffic prediction:
+
+- Use a time-based train/test split.
+- Compare predictions against a simple baseline.
+- Measure MAE and RMSE for numerical predictions.
+- Evaluate classification metrics if congestion categories are predicted.
+- Avoid data leakage between training and testing.
+- Document the geographic coverage and limitations of the dataset.
+
+12.7 Usability Testing
+
+Ask representative users to complete basic travel-planning tasks and identify usability issues.
+
+---
+
+13. Acceptance Criteria
+
+The system shall be accepted for the initial MVP demonstration when:
+
+1. Destination search returns relevant results when supported data is available.
+2. Users can submit travel preferences.
+3. The recommendation engine produces ranked destinations.
+4. Available weather information is displayed with appropriate context.
+5. Route calculations display distance and estimated duration when returned by the service.
+6. Users can generate and modify a proposed itinerary.
+7. The AI assistant explains recommendations using available application data.
+8. Traffic predictions are labeled accurately and are not misrepresented as live observations.
+9. Missing data and external service failures are handled gracefully.
+10. The application can be installed and run using the supplied setup instructions.
+11. The main functional and integration tests pass.
+12. Data-source attribution and relevant usage requirements are documented.
+
+If live traffic data is not available, the MVP may still be demonstrated using clearly labeled traffic predictions or historical estimates, provided the traffic limitations are explained.
+
+---
+
+14. Deployment and Maintenance
+
+The application should be organized into separate frontend and backend components.
+
+The frontend may be deployed to a suitable static or web hosting platform. The backend and database may be deployed to compatible hosting environments or run locally for the academic demonstration.
+
+The deployment process should include:
+
+- Environment configuration.
+- Dependency installation.
+- Database initialization.
+- API connectivity verification.
+- Model and dataset configuration where applicable.
+- Basic logging and error monitoring.
+- Documentation of service limits and credentials.
+
+Public deployment must not assume that free-tier hosting, public API instances, or public map tile servers provide unlimited service.
+
+Maintenance activities should include dependency updates, API compatibility checks, model evaluation, and review of external-service policies.
+
+---
+
+15. Limitations
+
+The initial system has the following limitations:
+
+- Weather accuracy depends on the selected weather provider and forecast horizon.
+- Destination coverage depends on the completeness of the available geographical data.
+- Route estimates depend on the selected routing engine and its underlying road data.
+- Basic open routing services do not inherently provide real-time traffic congestion.
+- Traffic prediction depends on representative historical and current input data.
+- A model trained on a foreign city cannot automatically be assumed to predict Indian city traffic accurately.
+- AI-generated explanations may require validation and careful grounding.
+- Public free services may enforce rate limits or change availability.
+- Recommendation quality depends on the reliability of destination metadata and the suitability of scoring weights.
+
+These limitations shall be considered during evaluation and documented in the final project report.
+
+---
+
+16. Future Enhancements
+
+Potential future enhancements include:
+
+- Integration with an authorized live traffic data provider.
+- Local traffic data collection and model training.
+- Improved time-series or graph-based traffic models.
+- Public transportation information.
+- Hotel and flight search.
+- Collaborative itineraries.
+- Mobile applications.
+- Multilingual interaction.
+- Accessibility-focused recommendations.
+- Event-based travel planning.
+- More advanced itinerary optimization.
+- User feedback-based recommendation improvements.
+
+---
+
+17. Conclusion
+
+AI-TRAVELMATE is designed as an intelligent travel planning system that integrates destination discovery, weather information, route calculations, personalized recommendations, traffic prediction, and AI-assisted explanations.
+
+This SRS establishes the requirements for building and testing the initial MVP using a modular architecture and primarily free or open-source technologies.
+
+The system shall prioritize reliable information, transparent predictions, responsible data usage, maintainability, and a user-friendly travel-planning experience.
+
+Live traffic availability is explicitly treated as a data-source dependency, while traffic prediction is treated as a separate machine learning capability that must be evaluated using appropriate data.
