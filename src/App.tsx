@@ -14,8 +14,17 @@ import { ItineraryBuilder } from './components/ItineraryBuilder';
 import { AIAssistantChat } from './components/AIAssistantChat';
 import { EvaluationModal } from './components/EvaluationModal';
 import { SavedTripsModal } from './components/SavedTripsModal';
-import { RegionSelector } from './components/RegionSelector';
-import { PILOT_DESTINATIONS, VIJAYAWADA_ORIGIN, IndianRegion, INDIAN_REGIONS } from './data/destinations';
+import { TripWorkflowHeader } from './components/TripWorkflowHeader';
+import { AICostEstimationCard } from './components/AICostEstimationCard';
+import { TripExportModal } from './components/TripExportModal';
+import { PackingListModal } from './components/PackingListModal';
+import { useLanguage } from './context/LanguageContext';
+import {
+  PILOT_DESTINATIONS,
+  VIJAYAWADA_ORIGIN,
+  WorldRegion,
+  ALL_REGIONS,
+} from './data/destinations';
 import {
   Destination,
   DestinationCategory,
@@ -25,28 +34,28 @@ import {
   RouteCalculationResult,
   TrafficPredictionResult,
   ItineraryPlan,
+  CostEstimationBreakdown,
 } from './types/travel';
 import {
   Search,
-  SlidersHorizontal,
-  Navigation,
   Calendar,
   Sparkles,
   MapPin,
-  RefreshCw,
-  Compass,
   ArrowRight,
-  Sun,
-  ShieldCheck,
   CheckCircle,
-  Globe2,
+  Compass,
+  Loader2,
+  RotateCcw,
+  Globe,
 } from 'lucide-react';
 
 export default function App() {
+  const { t, currency, currencySymbol } = useLanguage();
   const [activeTab, setActiveTab] = useState<'explore' | 'recommendations' | 'itinerary' | 'assistant' | 'saved'>('explore');
 
-  // Active Indian Region State (default: Vijayawada Pilot)
+  // Active Region / Destination State (default: Vijayawada Pilot)
   const [activeRegionId, setActiveRegionId] = useState<string>('vijayawada');
+  const activeRegion = ALL_REGIONS.find((r) => r.id === activeRegionId) || ALL_REGIONS[0];
 
   // Core Data States
   const [destinations, setDestinations] = useState<Destination[]>(PILOT_DESTINATIONS);
@@ -54,6 +63,8 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<DestinationCategory>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isAiSearching, setIsAiSearching] = useState(false);
+  const [discoveredCityLabel, setDiscoveredCityLabel] = useState<string | null>(null);
 
   // User Preferences & Scoring
   const [preferences, setPreferences] = useState<UserPreference>({
@@ -90,9 +101,17 @@ export default function App() {
   const [savedTrips, setSavedTrips] = useState<ItineraryPlan[]>([]);
   const [isSavingTrip, setIsSavingTrip] = useState(false);
 
+  // AI Cost Estimation State
+  const [costEstimation, setCostEstimation] = useState<CostEstimationBreakdown | null>(null);
+  const [isCostEstimating, setIsCostEstimating] = useState(false);
+  const [travelersCount, setTravelersCount] = useState(1);
+  const [travelStyle, setTravelStyle] = useState<'budget' | 'moderate' | 'luxury'>('moderate');
+
   // Modals & Feedback
   const [isEvaluationOpen, setIsEvaluationOpen] = useState(false);
   const [isSavedTripsModalOpen, setIsSavedTripsModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isPackingModalOpen, setIsPackingModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -100,14 +119,21 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // 1. Initial Load: Weather, Saved Trips, and Default Itinerary
+  // 1. Initial Load: Weather, Saved Trips, Default Itinerary & Traffic
   useEffect(() => {
     fetchWeather(VIJAYAWADA_ORIGIN.latitude, VIJAYAWADA_ORIGIN.longitude, 'Vijayawada, AP');
     fetchSavedTrips();
     generateInitialItinerary();
-    // Default initial traffic prediction for Bandar Road
     fetchTrafficPrediction('bandar-road-corridor', preferences.departureTime);
   }, []);
+
+  // Re-estimate cost when currency changes
+  useEffect(() => {
+    if (itinerary && itinerary.days.some((d) => d.items.length > 0)) {
+      const currentPlanDests = itinerary.days.flatMap((d) => d.items.map((it) => it.destination));
+      fetchCostEstimation(currentPlanDests);
+    }
+  }, [currency]);
 
   const fetchWeather = async (lat: number, lon: number, name: string) => {
     setIsWeatherLoading(true);
@@ -151,6 +177,8 @@ export default function App() {
       const data = await resp.json();
       if (resp.ok && data.success) {
         setItinerary(data.itinerary);
+        const initDests = data.itinerary.days.flatMap((d: any) => d.items.map((it: any) => it.destination));
+        fetchCostEstimation(initDests, VIJAYAWADA_ORIGIN);
       }
     } catch (err) {
       console.error('Initial itinerary error:', err);
@@ -181,53 +209,153 @@ export default function App() {
     }
   };
 
-  // 2. Destination Search & India Region Switching
-  const handleSelectRegion = (region: IndianRegion) => {
-    setActiveRegionId(region.id);
-    const newOrigin = {
-      name: region.defaultOriginName,
-      latitude: region.latitude,
-      longitude: region.longitude,
-    };
-    setPreferences((prev) => ({
-      ...prev,
-      startingLocation: newOrigin,
-    }));
-    setDestinations(region.destinations);
-    setSelectedDestination(region.destinations[0] || null);
-    setActiveRoute(null);
+  // AI-Powered Comprehensive Cost Estimation Fetcher
+  const fetchCostEstimation = async (
+    destsParam?: Destination[],
+    originParam?: { name: string; latitude: number; longitude: number },
+    overrideParams?: {
+      travelersCount?: number;
+      tripDurationDays?: number;
+      travelStyle?: 'budget' | 'moderate' | 'luxury';
+    }
+  ) => {
+    const currentPlanDests =
+      destsParam || (itinerary?.days.flatMap((d) => d.items.map((it) => it.destination))) || [];
 
-    // Live weather for selected Indian city
-    fetchWeather(region.latitude, region.longitude, `${region.name}, ${region.state}`);
-
-    // Traffic prediction for this city corridor
-    if (region.corridors && region.corridors.length > 0) {
-      fetchTrafficPrediction(region.corridors[0].id, preferences.departureTime);
-    } else {
-      fetchTrafficPrediction('corridor-auto', preferences.departureTime);
+    if (currentPlanDests.length === 0) {
+      setCostEstimation(null);
+      return;
     }
 
-    // Refresh itinerary for this city
-    fetchItineraryForRegion(region, newOrigin);
-    showToast(`Active trip hub set to ${region.name}, ${region.state}!`);
+    setIsCostEstimating(true);
+    try {
+      const origin = originParam || preferences.startingLocation;
+      const travelers = overrideParams?.travelersCount ?? travelersCount;
+      const days = overrideParams?.tripDurationDays ?? preferences.tripDurationDays;
+      const style = overrideParams?.travelStyle ?? travelStyle;
+
+      const resp = await fetch('/api/cost-estimation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinations: currentPlanDests,
+          startingLocation: origin,
+          travelMode: preferences.travelMode || 'driving',
+          tripDurationDays: days,
+          travelersCount: travelers,
+          travelStyle: style,
+          currency,
+        }),
+      });
+
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        setCostEstimation(data);
+      }
+    } catch (err) {
+      console.error('Cost estimation error:', err);
+    } finally {
+      setIsCostEstimating(false);
+    }
   };
 
-  const handleSelectCustomLocation = (loc: { name: string; latitude: number; longitude: number }) => {
-    setActiveRegionId('custom');
+  const regenerateItineraryForDays = async (dests: Destination[], daysCount: number) => {
+    try {
+      const resp = await fetch('/api/itineraries/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin: preferences.startingLocation,
+          destinations: dests,
+          tripDurationDays: daysCount,
+          title: `${activeRegion.name} ${daysCount}-Day Travel Plan`,
+        }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        setItinerary(data.itinerary);
+        fetchCostEstimation(dests, preferences.startingLocation, { tripDurationDays: daysCount });
+      }
+    } catch (err) {
+      console.error('Failed to regenerate itinerary for days:', err);
+    }
+  };
+
+  const handleUpdateTripDuration = (days: number) => {
+    const validDays = Math.max(1, Math.min(30, days));
+    setPreferences((prev) => ({ ...prev, tripDurationDays: validDays }));
+    if (itinerary && itinerary.days.some((d) => d.items.length > 0)) {
+      const allDests = itinerary.days.flatMap((d) => d.items.map((it) => it.destination));
+      regenerateItineraryForDays(allDests, validDays);
+      showToast(`Days planner updated: ${validDays} day(s) scheduled.`);
+    } else {
+      showToast(`Trip duration set to ${validDays} day(s).`);
+    }
+  };
+
+  const handleUpdateCustomBudget = (amt: number | undefined) => {
+    setPreferences((prev) => ({ ...prev, customBudgetAmount: amt }));
+    if (amt) {
+      showToast(`Target budget set to ${currency}${amt.toLocaleString()}`);
+    }
+  };
+
+  // 2. Step 1: Starting Location Selection Handler
+  const handleSelectStartingLocation = (loc: { name: string; latitude: number; longitude: number }) => {
     setPreferences((prev) => ({
       ...prev,
       startingLocation: loc,
     }));
     setActiveRoute(null);
     fetchWeather(loc.latitude, loc.longitude, loc.name);
-    fetchTrafficPrediction('custom-arterial', preferences.departureTime);
 
-    // Search attractions around this custom Indian location
-    handleSearch('', 'All', loc);
-    showToast(`Trip hub set to ${loc.name}!`);
+    // Refresh route for selected destination if one exists
+    if (selectedDestination) {
+      handleCalculateRoute(selectedDestination, loc);
+    }
+
+    // Refresh AI cost estimation with new starting point
+    fetchCostEstimation(undefined, loc);
+    showToast(`Starting point set to ${loc.name.split(',')[0]}!`);
   };
 
-  const fetchItineraryForRegion = async (region: IndianRegion, originLoc: { name: string; latitude: number; longitude: number }) => {
+  const handleFocusStartingPointOnMap = () => {
+    setActiveTab('explore');
+    setTimeout(() => {
+      const mapEl = document.getElementById('interactive-map-section');
+      if (mapEl) {
+        mapEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+  };
+
+  // Step 2: Destination City / Region Selection Handler
+  const handleSelectDestinationRegion = (region: WorldRegion) => {
+    setActiveRegionId(region.id);
+    setDestinations(region.destinations);
+
+    if (region.destinations.length > 0) {
+      setSelectedDestination(region.destinations[0]);
+      handleCalculateRoute(region.destinations[0]);
+    }
+
+    // Live weather for destination
+    fetchWeather(region.latitude, region.longitude, `${region.name}, ${region.state}`);
+
+    // Traffic prediction for destination corridors
+    if (region.corridors && region.corridors.length > 0) {
+      fetchTrafficPrediction(region.corridors[0].id, preferences.departureTime);
+    }
+
+    // Generate initial suggested itinerary for this destination
+    fetchItineraryForRegion(region, preferences.startingLocation);
+    showToast(`Destination set to ${region.name} (${region.destinations.length} popular attractions)!`);
+  };
+
+  const fetchItineraryForRegion = async (
+    region: WorldRegion,
+    originLoc: { name: string; latitude: number; longitude: number }
+  ) => {
     try {
       const topIds = region.destinations.slice(0, 4).map((d) => d.id);
       const resp = await fetch('/api/itineraries/generate', {
@@ -237,31 +365,41 @@ export default function App() {
           origin: originLoc,
           destinationIds: topIds,
           tripDurationDays: preferences.tripDurationDays,
-          title: `${region.name} Circuit (${preferences.tripDurationDays} Days)`,
+          title: `${region.name} Discovery Circuit`,
         }),
       });
       const data = await resp.json();
       if (resp.ok && data.success) {
         setItinerary(data.itinerary);
+        const topDests = data.itinerary.days.flatMap((d: any) => d.items.map((it: any) => it.destination));
+        fetchCostEstimation(topDests, originLoc);
       }
     } catch (err) {
       console.warn('Region itinerary generation error:', err);
     }
   };
 
-  const handleSearch = async (queryText: string, cat: DestinationCategory, customOrigin?: { latitude: number; longitude: number }) => {
+  // Destination Search (Unconstrained across all destinations and regions when query is provided)
+  const handleSearch = async (queryText: string, cat: DestinationCategory) => {
     setIsSearching(true);
-    const originToUse = customOrigin || preferences.startingLocation;
     try {
       const catParam = cat !== 'All' ? `&category=${encodeURIComponent(cat)}` : '';
       const qParam = queryText ? `&q=${encodeURIComponent(queryText)}` : '';
-      const regionParam = activeRegionId !== 'custom' ? `&regionId=${activeRegionId}` : '';
-      const resp = await fetch(`/api/destinations/search?latitude=${originToUse.latitude}&longitude=${originToUse.longitude}${qParam}${catParam}${regionParam}`);
+      // When searching with a text query, do not restrict to activeRegionId so user can discover places worldwide
+      const regionParam = queryText.trim() ? '' : `&regionId=${activeRegionId}`;
+      const resp = await fetch(
+        `/api/destinations/search?latitude=${preferences.startingLocation.latitude}&longitude=${preferences.startingLocation.longitude}${qParam}${catParam}${regionParam}`
+      );
       const data = await resp.json();
       if (resp.ok && data.success) {
         setDestinations(data.destinations);
         if (data.destinations.length > 0) {
           setSelectedDestination(data.destinations[0]);
+        }
+        if (queryText.trim()) {
+          setDiscoveredCityLabel(queryText.trim());
+        } else {
+          setDiscoveredCityLabel(null);
         }
       }
     } catch (err) {
@@ -271,73 +409,76 @@ export default function App() {
     }
   };
 
-  // 3. Compute Recommendations
-  const handleComputeRecommendations = async () => {
-    setIsComputingRecommendations(true);
+  // Google Gemini AI Powered Real-Time Destination Discovery
+  const handleGeminiSearch = async (overrideQuery?: string) => {
+    const q = (overrideQuery !== undefined ? overrideQuery : searchQuery).trim();
+    if (!q) {
+      showToast('Please type a city, landmark, or region to search with Gemini AI.');
+      return;
+    }
+    setSearchQuery(q);
+    setIsAiSearching(true);
     try {
-      const resp = await fetch('/api/recommendations', {
+      const resp = await fetch('/api/destinations/ai-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          origin: preferences.startingLocation,
-          interests: preferences.interests,
-          budget: preferences.budget,
-          tripDurationDays: preferences.tripDurationDays,
-          weights: preferences.scoringWeights,
-          weatherConditions: {
-            temperatureC: weather?.current?.temperatureC || 32,
-            isRaining: (weather?.current?.precipitationProbability || 0) > 40,
-          },
+          query: q,
+          category: selectedCategory,
+          latitude: preferences.startingLocation.latitude,
+          longitude: preferences.startingLocation.longitude,
         }),
       });
 
       const data = await resp.json();
-      if (resp.ok && data.success) {
-        setRecommendations(data.rankedDestinations);
-        setActiveTab('recommendations');
-        showToast('Personalized recommendations computed with transparent weights!');
+      if (resp.ok && data.success && data.destinations && data.destinations.length > 0) {
+        setDestinations(data.destinations);
+        setSelectedDestination(data.destinations[0]);
+        setDiscoveredCityLabel(q);
+        showToast(`✨ Discovered ${data.destinations.length} popular places for "${q}" via Google Gemini AI!`);
 
-        // Generate AI synthesis briefing
-        fetchRecommendationBriefing(data.rankedDestinations.slice(0, 4));
+        // Fetch live weather for discovered destination
+        if (data.destinations[0].latitude && data.destinations[0].longitude) {
+          fetchWeather(data.destinations[0].latitude, data.destinations[0].longitude, `${q}`);
+        }
+      } else {
+        showToast(`No specific Gemini results. Showing best catalog matches for "${q}".`);
+        handleSearch(q, selectedCategory);
       }
     } catch (err) {
-      console.error('Recommendation computation error:', err);
-      showToast('Error calculating recommendations. Please try again.');
+      console.error('Gemini AI search error:', err);
+      showToast('Gemini AI search error, falling back to standard search.');
+      handleSearch(q, selectedCategory);
     } finally {
-      setIsComputingRecommendations(false);
+      setIsAiSearching(false);
     }
   };
 
-  const fetchRecommendationBriefing = async (topScored: ScoredDestination[]) => {
-    try {
-      const resp = await fetch('/api/recommendations/explain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          destinations: topScored.map((s) => s.destination),
-          preferences,
-          weather: weather?.current || {},
-        }),
-      });
-      const data = await resp.json();
-      if (resp.ok && data.success) {
-        setRecommendationBriefing(data.explanation);
-      }
-    } catch (err) {
-      console.warn('Briefing error:', err);
+  const handleResetExplore = () => {
+    setSearchQuery('');
+    setDiscoveredCityLabel(null);
+    setSelectedCategory('All');
+    setDestinations(activeRegion.destinations);
+    if (activeRegion.destinations.length > 0) {
+      setSelectedDestination(activeRegion.destinations[0]);
     }
+    showToast(`Reset to ${activeRegion.name} catalog.`);
   };
 
-  // 4. Calculate Route to a Destination
-  const handleCalculateRoute = async (dest: Destination) => {
+  // Calculate Route
+  const handleCalculateRoute = async (
+    dest: Destination,
+    customOrigin?: { latitude: number; longitude: number; name: string }
+  ) => {
     setIsRouteLoading(true);
     setSelectedDestination(dest);
+    const originToUse = customOrigin || preferences.startingLocation;
     try {
       const resp = await fetch('/api/routes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          origin: preferences.startingLocation,
+          origin: originToUse,
           destination: dest,
           departureTime: preferences.departureTime,
           dayOfWeek: new Date().toLocaleDateString('en-US', { weekday: 'long' }),
@@ -347,26 +488,22 @@ export default function App() {
       const data = await resp.json();
       if (resp.ok && data.success) {
         setActiveRoute(data);
-        showToast(`Route computed: ${data.distanceKm} km (${data.trafficAdjustedDurationMin} mins)`);
-
-        // Refresh traffic prediction for this corridor
+        showToast(`Route: ${data.distanceKm} km (~${data.trafficAdjustedDurationMin} mins)`);
         fetchTrafficPrediction(dest.id, preferences.departureTime);
       }
     } catch (err) {
       console.error('Route error:', err);
-      showToast('Could not calculate route. Using geometric fallback.');
     } finally {
       setIsRouteLoading(false);
     }
   };
 
-  // 5. Add / Remove Itinerary Items
+  // Step 3: Add Destination to Itinerary Plan & Trigger Real-Time Cost Estimation
   const handleAddToItinerary = (dest: Destination) => {
     if (!itinerary) {
-      // Create fresh itinerary
       const newPlan: ItineraryPlan = {
         id: `itinerary-${Date.now()}`,
-        title: 'Custom Vijayawada Trip',
+        title: `${activeRegion.name} Custom Plan`,
         startingLocation: preferences.startingLocation,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -396,56 +533,139 @@ export default function App() {
         ],
       };
       setItinerary(newPlan);
-      showToast(`Added ${dest.name} to itinerary!`);
+      fetchCostEstimation([dest]);
+      showToast(`Added ${dest.name} to plan! AI budget calculated.`);
       return;
     }
 
-    // Check if already in itinerary
+    // Check if already in plan
     const exists = itinerary.days.some((d) => d.items.some((it) => it.destination.id === dest.id));
     if (exists) {
-      showToast(`${dest.name} is already in your itinerary plan.`);
+      // Toggle remove
+      const updatedDays = itinerary.days.map((d) => ({
+        ...d,
+        items: d.items.filter((it) => it.destination.id !== dest.id),
+      }));
+      const updatedPlan = {
+        ...itinerary,
+        days: updatedDays,
+        totalDestinations: Math.max(0, itinerary.totalDestinations - 1),
+      };
+      setItinerary(updatedPlan);
+      const remainingDests = updatedDays.flatMap((d) => d.items.map((it) => it.destination));
+      fetchCostEstimation(remainingDests);
+      showToast(`Removed ${dest.name} from plan.`);
       return;
     }
 
-    // Append to Day 1
-    const targetDay = itinerary.days[0];
+    // Find day with fewest items to balance the multi-day itinerary
+    let bestDayIndex = 0;
+    let minItems = itinerary.days[0]?.items.length ?? 0;
+    for (let i = 1; i < itinerary.days.length; i++) {
+      if (itinerary.days[i].items.length < minItems) {
+        minItems = itinerary.days[i].items.length;
+        bestDayIndex = i;
+      }
+    }
+
+    const targetDay = itinerary.days[bestDayIndex] || itinerary.days[0];
+    const targetDayNumber = targetDay?.dayNumber || (bestDayIndex + 1);
+
+    const slotTimes = ['09:00 - 11:00', '11:30 - 13:30', '14:30 - 16:30', '17:00 - 19:00', '19:30 - 21:00'];
+    const chosenSlot = slotTimes[Math.min(targetDay.items.length, slotTimes.length - 1)];
+
     const newItem = {
       id: `item-${Date.now()}-${dest.id}`,
       destination: dest,
       order: targetDay.items.length + 1,
-      dayNumber: 1,
-      timeSlot: '14:30 - 16:00',
+      dayNumber: targetDayNumber,
+      timeSlot: chosenSlot,
       durationMin: dest.estimatedDurationMin,
-      travelTimeFromPreviousMin: 18,
-      travelDistanceFromPreviousKm: 5.2,
+      travelTimeFromPreviousMin: targetDay.items.length > 0 ? 20 : 0,
+      travelDistanceFromPreviousKm: targetDay.items.length > 0 ? 6.5 : 0,
       trafficLevel: 'Moderate' as const,
       userNotes: dest.bestTimeToVisit,
     };
 
     const updatedDays = itinerary.days.map((d, i) =>
-      i === 0
+      i === bestDayIndex
         ? {
             ...d,
             items: [...d.items, newItem],
-            totalDistanceKm: Math.round((d.totalDistanceKm + 5.2) * 10) / 10,
-            totalDurationMin: d.totalDurationMin + dest.estimatedDurationMin + 18,
+            totalDurationMin: d.totalDurationMin + dest.estimatedDurationMin + (d.items.length > 0 ? 20 : 0),
+            totalDistanceKm: Math.round((d.totalDistanceKm + (d.items.length > 0 ? 6.5 : 0)) * 10) / 10,
           }
         : d
     );
 
-    const updatedItinerary: ItineraryPlan = {
+    const updatedPlan: ItineraryPlan = {
       ...itinerary,
       days: updatedDays,
       totalDestinations: itinerary.totalDestinations + 1,
       totalEstimatedBudgetINR: itinerary.totalEstimatedBudgetINR + dest.feeINR,
-      updatedAt: new Date().toISOString(),
     };
 
-    setItinerary(updatedItinerary);
-    showToast(`Added ${dest.name} to itinerary!`);
+    setItinerary(updatedPlan);
+    const allPlanDests = updatedDays.flatMap((d) => d.items.map((it) => it.destination));
+    fetchCostEstimation(allPlanDests);
+    showToast(`Added ${dest.name} to Day ${targetDayNumber} of your plan! AI cost estimation updated.`);
   };
 
-  // 6. Save Itinerary
+  // Compute Personalized Recommendations
+  const handleComputeRecommendations = async () => {
+    setIsComputingRecommendations(true);
+    try {
+      const resp = await fetch('/api/recommendations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin: preferences.startingLocation,
+          interests: preferences.interests,
+          budget: preferences.budget,
+          tripDurationDays: preferences.tripDurationDays,
+          weights: preferences.scoringWeights,
+          weatherConditions: {
+            temperatureC: weather?.current?.temperatureC || 32,
+            isRaining: (weather?.current?.precipitationProbability || 0) > 40,
+          },
+        }),
+      });
+
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        setRecommendations(data.rankedDestinations);
+        setActiveTab('recommendations');
+        showToast('Personalized recommendations computed with transparent weights!');
+        fetchRecommendationBriefing(data.rankedDestinations.slice(0, 4));
+      }
+    } catch (err) {
+      console.error('Recommendation computation error:', err);
+    } finally {
+      setIsComputingRecommendations(false);
+    }
+  };
+
+  const fetchRecommendationBriefing = async (topScored: ScoredDestination[]) => {
+    try {
+      const resp = await fetch('/api/recommendations/explain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinations: topScored.map((s) => s.destination),
+          preferences,
+          weather: weather?.current || {},
+        }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        setRecommendationBriefing(data.explanation);
+      }
+    } catch (err) {
+      console.warn('Briefing error:', err);
+    }
+  };
+
+  // Save Trip to In-Memory / Local Storage
   const handleSaveItinerary = async () => {
     if (!itinerary) return;
     setIsSavingTrip(true);
@@ -457,12 +677,11 @@ export default function App() {
       });
       const data = await resp.json();
       if (resp.ok && data.success) {
-        showToast('Itinerary successfully saved to My Trips!');
+        showToast(t('savedSuccessfully', 'Trip saved successfully!'));
         fetchSavedTrips();
       }
     } catch (err) {
-      console.error('Save error:', err);
-      showToast('Failed to save itinerary.');
+      console.error('Save trip error:', err);
     } finally {
       setIsSavingTrip(false);
     }
@@ -470,55 +689,14 @@ export default function App() {
 
   const handleDeleteSavedTrip = async (tripId: string) => {
     try {
-      await fetch(`/api/saved-trips/${tripId}`, { method: 'DELETE' });
-      setSavedTrips((prev) => prev.filter((t) => t.id !== tripId));
-      showToast('Trip plan removed.');
+      const resp = await fetch(`/api/saved-trips/${tripId}`, { method: 'DELETE' });
+      if (resp.ok) {
+        showToast('Trip removed from saved archive.');
+        fetchSavedTrips();
+      }
     } catch (err) {
       console.error('Delete error:', err);
     }
-  };
-
-  const handleGenerateItineraryFromRecommendations = () => {
-    if (recommendations.length === 0) return;
-    const topDests = recommendations.slice(0, 5).map((r) => r.destination);
-
-    const timeSlots = ['08:30 - 10:00', '10:30 - 12:15', '14:00 - 15:30', '16:30 - 18:00', '18:30 - 20:00'];
-    const items = topDests.map((dest, idx) => ({
-      id: `rec-item-${dest.id}`,
-      destination: dest,
-      order: idx + 1,
-      dayNumber: 1,
-      timeSlot: timeSlots[idx % timeSlots.length],
-      durationMin: dest.estimatedDurationMin,
-      travelTimeFromPreviousMin: 15,
-      travelDistanceFromPreviousKm: 4.8,
-      trafficLevel: 'Low' as const,
-      userNotes: dest.bestTimeToVisit,
-    }));
-
-    const newPlan: ItineraryPlan = {
-      id: `itinerary-${Date.now()}`,
-      title: `Recommended ${preferences.tripDurationDays}-Day Vijayawada Circuit`,
-      startingLocation: preferences.startingLocation,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      totalDestinations: topDests.length,
-      totalEstimatedBudgetINR: topDests.reduce((acc, d) => acc + d.feeINR, 0),
-      aiExplanation: recommendationBriefing || 'Algorithmically optimized route based on your personalized interest weights and weather forecast.',
-      days: [
-        {
-          dayNumber: 1,
-          date: 'Day 1',
-          totalDistanceKm: 18.5,
-          totalDurationMin: 340,
-          items,
-        },
-      ],
-    };
-
-    setItinerary(newPlan);
-    setActiveTab('itinerary');
-    showToast('Generated fresh itinerary from your top recommendations!');
   };
 
   const categories: DestinationCategory[] = [
@@ -530,9 +708,11 @@ export default function App() {
     'Food & Cuisine',
   ];
 
+  const itemsInPlanCount = itinerary ? itinerary.days.reduce((acc, d) => acc + d.items.length, 0) : 0;
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
-      {/* Top Bar Navigation */}
+      {/* Top Navbar with Language and Currency Selectors */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={(tab) => {
@@ -544,9 +724,11 @@ export default function App() {
         }}
         onOpenEvaluation={() => setIsEvaluationOpen(true)}
         savedTripsCount={savedTrips.length}
+        onOpenExportSheet={() => setIsExportModalOpen(true)}
+        onOpenPackingList={() => setIsPackingModalOpen(true)}
       />
 
-      {/* Floating Toast Notification */}
+      {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-lg border border-slate-700 text-xs flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -555,74 +737,48 @@ export default function App() {
       )}
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* All-India Region & Location Selector */}
-        <RegionSelector
-          currentRegionId={activeRegionId}
-          currentOriginName={preferences.startingLocation.name}
-          onSelectRegion={handleSelectRegion}
-          onSelectCustomLocation={handleSelectCustomLocation}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-5">
+        {/* Step-by-Step Location & Destination Selection Workflow Header */}
+        <TripWorkflowHeader
+          startingLocation={preferences.startingLocation}
+          onSelectStartingLocation={handleSelectStartingLocation}
+          selectedRegion={activeRegion}
+          onSelectRegion={handleSelectDestinationRegion}
+          itemsInPlanCount={itemsInPlanCount}
+          totalEstimatedCost={costEstimation?.totalEstimatedCost || 0}
+          onOpenItinerary={() => setActiveTab('itinerary')}
+          onFocusStartingPointOnMap={handleFocusStartingPointOnMap}
+          tripDurationDays={preferences.tripDurationDays}
+          onUpdateDurationDays={handleUpdateTripDuration}
+          customBudgetAmount={preferences.customBudgetAmount}
+          onUpdateBudgetAmount={handleUpdateCustomBudget}
         />
 
-        {/* TAB 1: DESTINATIONS & MAP EXPLORER */}
+        {/* TAB 1: EXPLORE POPULAR PLACES & ESTIMATE COSTS */}
         {activeTab === 'explore' && (
           <div className="space-y-6">
-            {/* Dynamic Hero Banner */}
-            <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-900 text-white min-h-[200px] flex flex-col justify-end p-6 sm:p-8">
-              <img
-                src="/src/assets/images/travelmate_hero_vijayawada_1793036232221.jpg"
-                alt="AI-TRAVELMATE India Travel Intelligence"
-                referrerPolicy="no-referrer"
-                className="absolute inset-0 w-full h-full object-cover opacity-35"
+            {/* Live AI Cost Estimation Card (Displays whenever places are in the plan) */}
+            {itemsInPlanCount > 0 && (
+              <AICostEstimationCard
+                estimation={costEstimation}
+                isLoading={isCostEstimating}
+                onRefresh={() => fetchCostEstimation()}
+                onUpdateParams={(params) => {
+                  if (params.travelersCount) setTravelersCount(params.travelersCount);
+                  if (params.travelStyle) setTravelStyle(params.travelStyle);
+                  if (params.tripDurationDays) {
+                    setPreferences((prev) => ({ ...prev, tripDurationDays: params.tripDurationDays! }));
+                  }
+                  fetchCostEstimation(undefined, undefined, params);
+                }}
+                customBudgetAmount={preferences.customBudgetAmount}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/60 to-transparent" />
+            )}
 
-              <div className="relative z-10 max-w-3xl space-y-2">
-                <div className="flex items-center gap-2 text-xs text-amber-300 font-semibold uppercase tracking-wider">
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>
-                    {activeRegionId === 'vijayawada'
-                      ? 'Initial Pilot Location: Vijayawada, Andhra Pradesh (All-India Enabled)'
-                      : activeRegionId === 'custom'
-                      ? `Custom Indian Destination: ${preferences.startingLocation.name}`
-                      : `Selected Region: ${INDIAN_REGIONS.find((r) => r.id === activeRegionId)?.name}, ${INDIAN_REGIONS.find((r) => r.id === activeRegionId)?.state}`}
-                  </span>
-                </div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
-                  {activeRegionId === 'vijayawada'
-                    ? 'Intelligent Travel Planning, Weather & Route System'
-                    : `${INDIAN_REGIONS.find((r) => r.id === activeRegionId)?.name || 'India'} Travel & Route Intelligence`}
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-2xl">
-                  {activeRegionId === 'vijayawada'
-                    ? 'Discover sacred hilltop shrines, monolithic rock-cut caves, tranquil river islands, and authentic Andhra culinary culture. Powered by OpenStreetMap, Open-Meteo weather intelligence, and transparent ML traffic prediction.'
-                    : INDIAN_REGIONS.find((r) => r.id === activeRegionId)?.tagline ||
-                      'Explore destinations, live Open-Meteo atmospheric forecasts, OSRM road routes, and ML traffic conditions anywhere in India.'}
-                </p>
-
-                <div className="pt-2 flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={() => setActiveTab('recommendations')}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5"
-                  >
-                    <span>Compute Recommendations for {preferences.startingLocation.name.split(',')[0].split('(')[0]}</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-
-                  <button
-                    onClick={() => setIsEvaluationOpen(true)}
-                    className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-lg text-xs font-medium transition-colors backdrop-blur-xs"
-                  >
-                    SRS Specs & ML Diagnostics
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Split Screen Layout: Map & Controls (Left 55%) + Cards & Weather (Right 45%) */}
+            {/* Split Screen Layout: Map & Controls (Left 55%) + Destination Cards & Weather (Right 45%) */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               {/* Left Column: Interactive Map & Live Traffic Card */}
-              <div className="lg:col-span-7 space-y-4">
+              <div className="lg:col-span-7 space-y-4" id="interactive-map-section">
                 <div className="h-[480px]">
                   <InteractiveMap
                     destinations={destinations}
@@ -634,10 +790,11 @@ export default function App() {
                     activeRoute={activeRoute}
                     originLocation={preferences.startingLocation}
                     onAddToItinerary={handleAddToItinerary}
+                    onSetUserLocation={(loc) => handleSelectStartingLocation(loc)}
                   />
                 </div>
 
-                {/* Traffic Prediction Module */}
+                {/* Machine Learning Traffic Prediction Module */}
                 <TrafficPredictionCard
                   prediction={trafficPrediction}
                   isLoading={isTrafficLoading}
@@ -652,24 +809,88 @@ export default function App() {
 
               {/* Right Column: Search, Category Filters & Destination Cards */}
               <div className="lg:col-span-5 space-y-4">
-                {/* Search Bar & Category Segmented Tabs */}
+                {/* Search Bar & Category Filters with Gemini AI Discovery */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        handleSearch(e.target.value, selectedCategory);
-                      }}
-                      placeholder="Search temples, caves, islands, foods, or OSM places..."
-                      className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                          handleSearch(e.target.value, selectedCategory);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleGeminiSearch();
+                          }
+                        }}
+                        placeholder="Search any city or place (e.g. Goa, Hyderabad, Paris, Delhi, Jaipur)..."
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleGeminiSearch()}
+                      disabled={isAiSearching}
+                      className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                      title="Search & discover authentic places worldwide using Google Gemini AI"
+                    >
+                      {isAiSearching ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Searching...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          <span>AI Search</span>
+                        </>
+                      )}
+                    </button>
                   </div>
 
-                  {/* Category Filter Tabs (frontend-design interactive filter controls) */}
-                  <div className="flex flex-wrap gap-1">
+                  {/* 1-Tap Quick Explore City Hubs */}
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                      <Globe className="w-3 h-3 text-indigo-500" />
+                      <span>Popular Destinations (1-Click Gemini AI Discovery):</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: 'Goa Beaches', query: 'Goa beaches and forts' },
+                        { label: 'Hyderabad', query: 'Hyderabad pearls and monuments' },
+                        { label: 'Jaipur Palaces', query: 'Jaipur royal palaces' },
+                        { label: 'Delhi Heritage', query: 'Delhi historical landmarks' },
+                        { label: 'Kerala Backwaters', query: 'Kerala scenic waterways' },
+                        { label: 'Mumbai Marine', query: 'Mumbai iconic coastal places' },
+                        { label: 'Paris Wonders', query: 'Paris famous attractions' },
+                        { label: 'Tokyo Highlights', query: 'Tokyo cultural landmarks' },
+                        { label: 'Vijayawada', query: 'Vijayawada' },
+                      ].map((hub) => (
+                        <button
+                          key={hub.label}
+                          type="button"
+                          onClick={() => {
+                            setSearchQuery(hub.query);
+                            handleGeminiSearch(hub.query);
+                          }}
+                          className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer border ${
+                            searchQuery.toLowerCase().includes(hub.label.toLowerCase().split(' ')[0])
+                              ? 'bg-indigo-100 text-indigo-900 border-indigo-300 font-semibold'
+                              : 'bg-slate-100 hover:bg-indigo-50 hover:text-indigo-800 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {hub.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Category Filter Tabs */}
+                  <div className="flex flex-wrap gap-1 pt-1 border-t border-slate-100">
                     {categories.map((cat) => (
                       <button
                         key={cat}
@@ -677,7 +898,7 @@ export default function App() {
                           setSelectedCategory(cat);
                           handleSearch(searchQuery, cat);
                         }}
-                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                           selectedCategory === cat
                             ? 'bg-slate-900 text-white font-semibold shadow-xs'
                             : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
@@ -689,24 +910,59 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Gemini AI Searching Indicator */}
+                {isAiSearching && (
+                  <div className="p-3 bg-gradient-to-r from-indigo-50 via-violet-50 to-purple-50 border border-indigo-200 rounded-xl flex items-center gap-2.5 text-xs text-indigo-900 animate-pulse shadow-xs">
+                    <Sparkles className="w-4 h-4 text-indigo-600 shrink-0 animate-spin" />
+                    <div>
+                      <div className="font-bold">Consulting Google Gemini AI for authentic attractions...</div>
+                      <div className="text-[11px] text-indigo-600">Retrieving popular places, verified coordinates, entry fees, and high-res photos.</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Active AI Discovery Banner */}
+                {discoveredCityLabel && !isAiSearching && (
+                  <div className="p-2.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-2 text-xs text-emerald-950 shadow-2xs">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span className="truncate">
+                        Popular places discovered for <strong className="font-bold">{discoveredCityLabel}</strong> ({destinations.length} spots)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleResetExplore}
+                      className="text-[11px] font-semibold text-emerald-800 hover:text-emerald-950 flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100/70 hover:bg-emerald-100 border border-emerald-300 transition-colors cursor-pointer shrink-0"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* Weather Widget */}
                 <WeatherWidget
                   weather={weather}
                   isLoading={isWeatherLoading}
                   onRefresh={() =>
                     fetchWeather(
-                      preferences.startingLocation.latitude,
-                      preferences.startingLocation.longitude,
-                      preferences.startingLocation.name
+                      activeRegion.latitude,
+                      activeRegion.longitude,
+                      activeRegion.name
                     )
                   }
                 />
 
-                {/* Destination Catalog List */}
+                {/* Popular Places Catalog with Exact Images & Costs */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs text-slate-500 font-mono px-1">
-                    <span>{destinations.length} Available Destinations</span>
-                    <span>Click card to inspect route</span>
+                    <span className="font-semibold text-slate-700">
+                      {discoveredCityLabel
+                        ? `Popular Places for "${discoveredCityLabel}"`
+                        : `Popular Places in ${activeRegion.name}`} ({destinations.length})
+                    </span>
+                    <span>Click 'Add' to estimate budget</span>
                   </div>
 
                   <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
@@ -741,12 +997,11 @@ export default function App() {
               <div className="lg:col-span-4 space-y-4">
                 <PreferenceForm
                   preferences={preferences}
-                  onUpdatePreferences={setPreferences}
+                  onUpdatePreferences={(newPrefs) => setPreferences(newPrefs)}
                   onSubmit={handleComputeRecommendations}
                   isLoading={isComputingRecommendations}
                 />
 
-                {/* Open-Meteo Weather Widget */}
                 <WeatherWidget
                   weather={weather}
                   isLoading={isWeatherLoading}
@@ -774,7 +1029,7 @@ export default function App() {
                     <button
                       onClick={handleComputeRecommendations}
                       disabled={isComputingRecommendations}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm cursor-pointer"
                     >
                       Run Initial Recommendation Pass
                     </button>
@@ -791,26 +1046,6 @@ export default function App() {
                         <p className="leading-relaxed whitespace-pre-line">{recommendationBriefing}</p>
                       </div>
                     )}
-
-                    {/* Toolbar & Generate Itinerary Action */}
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900">
-                          Ranked Destinations by Weighted Score
-                        </h3>
-                        <p className="text-xs text-slate-500 font-mono mt-0.5">
-                          Formula: {preferences.scoringWeights.preferenceMatch}×Pref + {preferences.scoringWeights.budgetSuitability}×Budget + {preferences.scoringWeights.travelTimeSuitability}×Dist + {preferences.scoringWeights.weatherSuitability}×Weather
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={handleGenerateItineraryFromRecommendations}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-xs flex items-center gap-1.5 shrink-0"
-                      >
-                        <Calendar className="w-3.5 h-3.5" />
-                        <span>Build Itinerary from Top Picks</span>
-                      </button>
-                    </div>
 
                     {/* Ranked Destination Cards Grid */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -839,21 +1074,45 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 3: ITINERARY PLANNER & SCHEDULE */}
+        {/* TAB 3: ITINERARY PLANNER & AI BUDGET */}
         {activeTab === 'itinerary' && (
           <div className="space-y-6">
+            {/* AI Cost Estimation Card with Full Breakdown */}
+            <AICostEstimationCard
+              estimation={costEstimation}
+              isLoading={isCostEstimating}
+              onRefresh={() => fetchCostEstimation()}
+              onUpdateParams={(params) => {
+                if (params.travelersCount) setTravelersCount(params.travelersCount);
+                if (params.travelStyle) setTravelStyle(params.travelStyle);
+                if (params.tripDurationDays) {
+                  setPreferences((prev) => ({ ...prev, tripDurationDays: params.tripDurationDays! }));
+                }
+                fetchCostEstimation(undefined, undefined, params);
+              }}
+              customBudgetAmount={preferences.customBudgetAmount}
+              onOpenExportSheet={() => setIsExportModalOpen(true)}
+            />
+
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Column: Itinerary Timeline & Reordering */}
+              {/* Left Column: Itinerary Timeline */}
               <div className="lg:col-span-7">
                 <ItineraryBuilder
                   itinerary={itinerary}
-                  onUpdateItinerary={setItinerary}
+                  onUpdateItinerary={(updated) => {
+                    setItinerary(updated);
+                    const dests = updated.days.flatMap((d) => d.items.map((it) => it.destination));
+                    fetchCostEstimation(dests);
+                  }}
                   onSaveItinerary={handleSaveItinerary}
                   onFocusDestination={(dest) => {
                     setSelectedDestination(dest);
                     handleCalculateRoute(dest);
                   }}
                   isSaving={isSavingTrip}
+                  customBudgetAmount={preferences.customBudgetAmount}
+                  onOpenExportSheet={() => setIsExportModalOpen(true)}
+                  onOpenPackingList={() => setIsPackingModalOpen(true)}
                 />
               </div>
 
@@ -887,7 +1146,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 4: AI TRAVEL ASSISTANT */}
+        {/* TAB 4: AI TRAVEL ADVISOR CHAT */}
         {activeTab === 'assistant' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -901,7 +1160,7 @@ export default function App() {
                       handleCalculateRoute(match);
                     }
                   }}
-                  tripContextSummary={`Trip preferences: ${preferences.budget} budget, ${preferences.tripDurationDays} day(s), origin at ${preferences.startingLocation.name}. Current temperature: ${weather?.current?.temperatureC || 32}°C.`}
+                  tripContextSummary={`Trip preferences: ${preferences.budget} budget, ${preferences.tripDurationDays} day(s), origin at ${preferences.startingLocation.name}. Current destination: ${activeRegion.name}.`}
                 />
               </div>
 
@@ -912,19 +1171,19 @@ export default function App() {
                   isLoading={isWeatherLoading}
                   onRefresh={() =>
                     fetchWeather(
-                      preferences.startingLocation.latitude,
-                      preferences.startingLocation.longitude,
-                      preferences.startingLocation.name
+                      activeRegion.latitude,
+                      activeRegion.longitude,
+                      activeRegion.name
                     )
                   }
                 />
 
                 <div className="bg-white p-4 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-2">
                   <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
-                    Assistant Grounding Rules (SRS FR-44)
+                    Travel Advisor Grounding
                   </h4>
                   <p className="leading-relaxed">
-                    The assistant communicates strictly using verified destination details (fees in INR, opening hours, hill rules) and Open-Meteo forecasts. It does NOT invent live traffic congestion or fabricate unverified places.
+                    Powered by server-side Gemini 3.8 Flash. Grounded with accurate entry tickets, local opening hours, and Open-Meteo forecasts.
                   </p>
                 </div>
               </div>
@@ -939,7 +1198,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <Compass className="w-4 h-4 text-indigo-600" />
             <span className="font-bold text-slate-900">AI-TRAVELMATE</span>
-            <span>· Intelligent Travel Planning System (MVP v1.0)</span>
+            <span>· Intelligent Travel Planning System</span>
           </div>
 
           <div className="flex items-center gap-4 text-[11px] text-slate-400">
@@ -954,7 +1213,7 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Evaluation & SRS Lab Modal */}
+      {/* SRS Lab & Evaluation Modal */}
       <EvaluationModal
         isOpen={isEvaluationOpen}
         onClose={() => setIsEvaluationOpen(false)}
@@ -968,9 +1227,40 @@ export default function App() {
         onLoadTrip={(trip) => {
           setItinerary(trip);
           setActiveTab('itinerary');
+          const dests = trip.days.flatMap((d: any) => d.items.map((it: any) => it.destination));
+          fetchCostEstimation(dests);
           showToast(`Loaded ${trip.title}`);
         }}
         onDeleteTrip={handleDeleteSavedTrip}
+      />
+
+      {/* Offline Printable Travel Sheet Modal (PDF / HTML Export) */}
+      <TripExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        itinerary={itinerary}
+        costEstimation={costEstimation}
+        weather={weather}
+        customBudgetAmount={preferences.customBudgetAmount}
+        currencySymbol={currencySymbol}
+        onOpenPackingList={() => {
+          setIsExportModalOpen(false);
+          setIsPackingModalOpen(true);
+        }}
+      />
+
+      {/* Smart Packing List Generator Modal */}
+      <PackingListModal
+        isOpen={isPackingModalOpen}
+        onClose={() => setIsPackingModalOpen(false)}
+        tripDurationDays={preferences.tripDurationDays}
+        weather={weather}
+        destinations={itinerary ? itinerary.days.flatMap((d) => d.items.map((it) => it.destination)) : destinations}
+        tripTitle={itinerary?.title}
+        onOpenExportSheet={() => {
+          setIsPackingModalOpen(false);
+          setIsExportModalOpen(true);
+        }}
       />
     </div>
   );

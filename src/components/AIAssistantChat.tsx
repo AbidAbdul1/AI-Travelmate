@@ -8,10 +8,11 @@ interface AIAssistantChatProps {
 }
 
 const STARTER_PROMPTS = [
-  'Suggest a 1-day itinerary for Vijayawada focusing on heritage and temples.',
-  'How should I plan around midday heat at Undavalli Caves and Indrakeeladri hill?',
-  'Where can I try the best Punugulu and traditional Andhra meals in Vijayawada?',
-  'What are the ferry timings and boat tickets for Bhavani Island?',
+  'How much does travel cost by Uber vs Rapido across my route?',
+  'What are the dress codes and darshan timings for Kanakadurga Temple?',
+  'How do I reach Undavalli Caves and what are the ticket prices?',
+  'Suggest the best street food spots and Andhra thali meals.',
+  'How should I plan a 2-day itinerary starting from my current location?',
 ];
 
 export const AIAssistantChat: React.FC<AIAssistantChatProps> = ({
@@ -22,7 +23,7 @@ export const AIAssistantChat: React.FC<AIAssistantChatProps> = ({
     {
       id: 'welcome',
       sender: 'assistant',
-      text: "Namaskaram! I am your AI-TRAVELMATE Assistant. I provide verified facts and intelligent travel recommendations for Vijayawada, Krishna River basin, and Andhra Pradesh. How can I help tailor your journey today?",
+      text: "Namaskaram & Welcome! I am your AI-TRAVELMATE Assistant. I provide verified facts, entrance fee calculations, Uber/Rapido transit estimates, and route recommendations for trips in India and worldwide. How can I assist your journey today?",
       timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
