@@ -316,6 +316,79 @@ app.get('/api/geocode/reverse', async (req: Request, res: Response) => {
   }
 });
 
+// IP-based Geolocation Service Fallback (for iframes / desktop environments where GPS hardware times out or is restricted)
+app.get('/api/geocode/ip', async (req: Request, res: Response) => {
+  try {
+    let ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
+    if (ip === '::1' || ip === '127.0.0.1' || ip.startsWith('10.') || ip.startsWith('192.168.')) {
+      ip = ''; // Let external service detect public IP
+    }
+
+    // Try ipapi.co
+    try {
+      const geoRes = await fetch(`https://ipapi.co/${ip ? `${ip}/` : ''}json/`, {
+        headers: { 'User-Agent': 'AI-TRAVELMATE/1.0' },
+      });
+      if (geoRes.ok) {
+        const d = await geoRes.json();
+        if (d.latitude && d.longitude) {
+          const cityName = d.city || d.region || 'Current Hub';
+          const regionName = d.region || d.country_name || '';
+          const name = regionName ? `${cityName}, ${regionName}` : cityName;
+          return res.json({
+            success: true,
+            source: 'ip-geolocation',
+            name,
+            city: d.city,
+            region: d.region,
+            country: d.country_name,
+            latitude: d.latitude,
+            longitude: d.longitude,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('ipapi.co lookup failed, trying ip-api:', e);
+    }
+
+    // Secondary fallback: ip-api.com
+    try {
+      const geoRes2 = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,lat,lon`);
+      if (geoRes2.ok) {
+        const d2 = await geoRes2.json();
+        if (d2.status === 'success' && d2.lat && d2.lon) {
+          const name = `${d2.city}, ${d2.regionName || d2.country}`;
+          return res.json({
+            success: true,
+            source: 'ip-api',
+            name,
+            city: d2.city,
+            region: d2.regionName,
+            country: d2.country,
+            latitude: d2.lat,
+            longitude: d2.lon,
+          });
+        }
+      }
+    } catch (e2) {
+      console.warn('ip-api lookup failed:', e2);
+    }
+
+    // Default Central India Hub fallback
+    return res.json({
+      success: true,
+      source: 'default-hub',
+      name: 'Secunderabad Junction, Hyderabad, Telangana',
+      latitude: 17.4339,
+      longitude: 78.5042,
+      city: 'Hyderabad',
+      country: 'India',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: { code: 'IP_GEOCODE_FAILED', message: err.message } });
+  }
+});
+
 // -------------------------------------------------------------
 // 1. Google Gemini AI Destination Discovery & Photo Resolution
 // -------------------------------------------------------------
@@ -1056,14 +1129,20 @@ app.get('/api/weather', async (req: Request, res: Response) => {
     const wmo = mapWMOCode(current.weather_code);
 
     const advisories: string[] = [];
+    const cleanCity = locationName.split(',')[0].split('(')[0].trim();
     if (current.temperature_2m >= 38) {
-      advisories.push('Extreme Heat Advisory: Stay hydrated and schedule outdoor sites (Indrakeeladri hill, Kondapalli Fort) before 10:00 AM or after 4:30 PM.');
-    } else if (current.temperature_2m >= 34) {
-      advisories.push('Warm Sun Advisory: Carry sunscreen and light cotton attire for outdoor sightseeing.');
+      advisories.push(`Extreme Heat Advisory for ${cleanCity}: Observed temperature is ${current.temperature_2m}°C. Stay hydrated and prioritize outdoor sightseeing in early morning or after 4:30 PM.`);
+    } else if (current.temperature_2m >= 33) {
+      advisories.push(`Warm Weather in ${cleanCity}: ${current.temperature_2m}°C. Carry sunscreen, water, and breathable attire for walking circuits.`);
+    } else if (current.temperature_2m <= 15) {
+      advisories.push(`Cool Conditions in ${cleanCity}: Temperature is ${current.temperature_2m}°C. Light jacket or warm layers recommended for outdoor spots.`);
+    } else {
+      advisories.push(`Comfortable Sightseeing Weather in ${cleanCity}: ${current.temperature_2m}°C with ${current.relative_humidity_2m}% humidity.`);
     }
 
     if (current.precipitation > 0 || (json.daily?.precipitation_probability_max?.[0] || 0) > 40) {
-      advisories.push('Precipitation Alert: Chance of rainfall; boat services to Bhavani Island may experience brief holding delays.');
+      const rainChance = json.daily?.precipitation_probability_max?.[0] || 40;
+      advisories.push(`Precipitation Alert for ${cleanCity}: ${rainChance}% rain likelihood. Outdoor walkways may be slick; carry an umbrella or visit indoor heritage museums.`);
     }
     if (wmo.warning) {
       advisories.push(wmo.warning);
@@ -1168,17 +1247,35 @@ function predictTrafficForSegment(
   departureHour: number,
   dayOfWeek: string,
   weatherFriction: number,
-  baseDistanceKm: number
+  baseDistanceKm: number,
+  locationName?: string
 ) {
-  // Free flow baseline speed
-  const corridor = CORRIDORS_TRAFFIC_DATA.find((c) => c.id === roadSegmentId) || {
-    id: roadSegmentId,
-    name: 'Vijayawada Urban Corridor',
-    baseFreeFlowSpeedKmh: 40,
-    isArterial: true,
-    lengthKm: baseDistanceKm,
-    rushHours: [8, 9, 10, 17, 18, 19, 20],
-  };
+  // Check predefined corridors
+  let corridor = CORRIDORS_TRAFFIC_DATA.find((c) => c.id === roadSegmentId);
+  
+  if (!corridor) {
+    // Generate context-aware corridor name from location or roadSegmentId
+    let name = 'Main City Arterial Corridor';
+    if (locationName) {
+      const cleanLoc = locationName.split(',')[0].split('(')[0].trim();
+      name = `${cleanLoc} Central Transit Arterial`;
+    } else if (roadSegmentId && roadSegmentId !== 'default' && roadSegmentId !== 'bandar-road-corridor') {
+      name = roadSegmentId
+        .replace(/^(hyd|mumbai|delhi|goa|vizag|jaipur|paris|tokyo|london|dubai|rome)-/, '')
+        .split('-')
+        .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+        .join(' ') + ' Corridor';
+    }
+
+    corridor = {
+      id: roadSegmentId || 'dynamic-corridor',
+      name,
+      baseFreeFlowSpeedKmh: baseDistanceKm > 20 ? 55 : baseDistanceKm > 10 ? 45 : 38,
+      isArterial: true,
+      lengthKm: baseDistanceKm || 6.5,
+      rushHours: [8, 9, 10, 17, 18, 19, 20],
+    };
+  }
 
   const freeFlow = corridor.baseFreeFlowSpeedKmh;
 
@@ -1198,7 +1295,6 @@ function predictTrafficForSegment(
   const dayModifier = isWeekend ? -0.05 : 0.05;
 
   // 3. Weather Friction factor (Rain / Heat / Visibility)
-  // Rain typically increases congestion by 15-25%
   const weatherPenalty = weatherFriction * 0.22;
 
   // 4. ML Regressor output (Random Forest simulated response curve)
@@ -1232,7 +1328,14 @@ function predictTrafficForSegment(
 
 app.post('/api/traffic/predict', (req: Request, res: Response) => {
   try {
-    const { roadSegmentId = 'bandar-road-corridor', departureTime = '09:30', dayOfWeek = 'Monday', rainfallMm = 0, distanceKm = 6.5 } = req.body;
+    const {
+      roadSegmentId = '',
+      departureTime = '09:30',
+      dayOfWeek = 'Monday',
+      rainfallMm = 0,
+      distanceKm = 6.5,
+      locationName = '',
+    } = req.body;
 
     const [hourStr] = departureTime.split(':');
     const departureHour = parseInt(hourStr || '9', 10);
@@ -1243,13 +1346,14 @@ app.post('/api/traffic/predict', (req: Request, res: Response) => {
       departureHour,
       dayOfWeek,
       weatherFriction,
-      distanceKm
+      distanceKm,
+      locationName
     );
 
     // Generate hourly peak comparison across 6:00 AM - 10:00 PM for traveler decision making
     const hoursToCompare = [7, 8, 9, 11, 13, 16, 18, 19, 21];
     const hourlyTrends = hoursToCompare.map((h) => {
-      const pred = predictTrafficForSegment(roadSegmentId, h, dayOfWeek, weatherFriction, distanceKm);
+      const pred = predictTrafficForSegment(roadSegmentId, h, dayOfWeek, weatherFriction, distanceKm, locationName);
       const displayHour = h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`;
       return {
         hour: displayHour,
@@ -1261,7 +1365,7 @@ app.post('/api/traffic/predict', (req: Request, res: Response) => {
 
     const responsePayload = {
       success: true,
-      roadSegmentId,
+      roadSegmentId: currentPrediction.corridor.id,
       roadName: currentPrediction.corridor.name,
       departureTime,
       predictedSpeedKmh: currentPrediction.predictedSpeedKmh,

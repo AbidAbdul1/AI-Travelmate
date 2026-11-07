@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { ALL_REGIONS, WorldRegion } from '../data/destinations';
+import { detectUserLocation } from '../utils/locationService';
 import {
   MapPin,
   Navigation,
   Search,
   Sparkles,
   Crosshair,
-  LocateFixed,
   Building,
   Plane,
   Train,
@@ -23,7 +23,7 @@ import {
 interface TripWorkflowHeaderProps {
   startingLocation: { name: string; latitude: number; longitude: number };
   onSelectStartingLocation: (loc: { name: string; latitude: number; longitude: number }) => void;
-  selectedRegion: WorldRegion;
+  selectedRegion: WorldRegion | null;
   onSelectRegion: (region: WorldRegion) => void;
   itemsInPlanCount: number;
   totalEstimatedCost: number;
@@ -37,15 +37,15 @@ interface TripWorkflowHeaderProps {
   onAutoFillPlan?: () => void;
 }
 
-// Popular starting points across pilot and international hubs for 1-click selection
+// Popular starting points across major transport hubs for 1-click selection
 const QUICK_STARTING_HUBS = [
-  { name: 'Vijayawada Central Junction', lat: 16.5179, lon: 80.6196, type: 'train' },
-  { name: 'Vijayawada Airport (VGA)', lat: 16.5304, lon: 80.7968, type: 'plane' },
-  { name: 'Besant Road Center', lat: 16.5161, lon: 80.6200, type: 'city' },
   { name: 'Hyderabad Secunderabad', lat: 17.4339, lon: 78.5042, type: 'train' },
-  { name: 'Visakhapatnam Station', lat: 17.7214, lon: 83.2926, type: 'train' },
   { name: 'Bengaluru Majestic', lat: 12.9778, lon: 77.5714, type: 'train' },
-  { name: 'New Delhi CP', lat: 28.6315, lon: 77.2167, type: 'city' },
+  { name: 'Mumbai CSMT Station', lat: 18.9402, lon: 72.8356, type: 'train' },
+  { name: 'New Delhi CP Hub', lat: 28.6315, lon: 77.2167, type: 'city' },
+  { name: 'Visakhapatnam Station', lat: 17.7214, lon: 83.2926, type: 'train' },
+  { name: 'Vijayawada Central Junction', lat: 16.5179, lon: 80.6196, type: 'train' },
+  { name: 'Chennai Central Station', lat: 13.0827, lon: 80.2707, type: 'train' },
 ];
 
 export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
@@ -73,6 +73,7 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
   const [isOriginSearching, setIsOriginSearching] = useState(false);
   const [isLocatingGps, setIsLocatingGps] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
+  const [detectedLocationSource, setDetectedLocationSource] = useState<string | null>(null);
 
   // Search states for Destination
   const [isSelectingDestination, setIsSelectingDestination] = useState(false);
@@ -128,57 +129,29 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
     return () => clearTimeout(timer);
   }, [originSearchQuery]);
 
-  // High-precision GPS Device Current Location handler
-  const handleUseCurrentGps = () => {
-    if (!navigator.geolocation) {
-      setGpsError('Geolocation is not supported by your browser.');
-      return;
-    }
-
+  // Multi-tier reliable GPS & IP location detection handler
+  const handleUseCurrentGps = async () => {
     setIsLocatingGps(true);
     setGpsError(null);
 
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const lat = pos.coords.latitude;
-          const lon = pos.coords.longitude;
-          const res = await fetch(`/api/geocode/reverse?latitude=${lat}&longitude=${lon}`);
-          const data = await res.json();
-          if (data.success) {
-            onSelectStartingLocation({
-              name: data.name || `My Current Location (${lat.toFixed(4)}, ${lon.toFixed(4)})`,
-              latitude: lat,
-              longitude: lon,
-            });
-            setIsEditingOrigin(false);
-            if (onFocusStartingPointOnMap) {
-              onFocusStartingPointOnMap();
-            }
-          }
-        } catch (err) {
-          console.error('Reverse geocode error:', err);
-          onSelectStartingLocation({
-            name: `My GPS Location (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})`,
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-          });
-          setIsEditingOrigin(false);
-        } finally {
-          setIsLocatingGps(false);
-        }
-      },
-      (err) => {
-        console.warn('GPS location error:', err);
-        setIsLocatingGps(false);
-        if (err.code === 1) {
-          setGpsError('Location permission denied. Please allow access.');
-        } else {
-          setGpsError('Location timed out. Please search by name.');
-        }
-      },
-      { timeout: 12000, enableHighAccuracy: true, maximumAge: 0 }
-    );
+    try {
+      const loc = await detectUserLocation();
+      onSelectStartingLocation({
+        name: loc.name,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+      });
+      setDetectedLocationSource(loc.source);
+      setIsEditingOrigin(false);
+      if (onFocusStartingPointOnMap) {
+        onFocusStartingPointOnMap();
+      }
+    } catch (err: any) {
+      console.warn('Location detection error:', err);
+      setGpsError('Could not detect location. Please type your city in the search box below.');
+    } finally {
+      setIsLocatingGps(false);
+    }
   };
 
   // Filtered regions for Destination selection
@@ -235,7 +208,7 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
               </button>
             )}
 
-            {itemsInPlanCount === 0 && onAutoFillPlan && (
+            {itemsInPlanCount === 0 && onAutoFillPlan && selectedRegion && (
               <button
                 type="button"
                 onClick={onAutoFillPlan}
@@ -264,7 +237,7 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
               <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                 <span className="flex items-center gap-1 text-emerald-700">
                   <MapPin className="w-3.5 h-3.5" />
-                  <span>1. Starting From</span>
+                  <span>1. Starting From (Origin)</span>
                 </span>
                 <span className="text-[10px] text-indigo-600 group-hover:underline">
                   {isEditingOrigin ? 'Close' : 'Change'}
@@ -274,8 +247,11 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
                 <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
                 <span className="truncate">{startingLocation.name}</span>
               </div>
-              <div className="text-[11px] text-slate-400 font-mono mt-0.5 truncate">
-                {startingLocation.latitude.toFixed(3)}°N, {startingLocation.longitude.toFixed(3)}°E
+              <div className="text-[11px] text-slate-400 font-mono mt-0.5 truncate flex items-center gap-1.5">
+                <span>{startingLocation.latitude.toFixed(3)}°N, {startingLocation.longitude.toFixed(3)}°E</span>
+                {detectedLocationSource && (
+                  <span className="text-[9px] text-emerald-600 font-sans font-semibold">· GPS / IP Synced</span>
+                )}
               </div>
             </div>
 
@@ -297,7 +273,7 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
                   </button>
                 </div>
 
-                {/* Instant GPS Button */}
+                {/* Instant GPS with Multi-Tier Fallback */}
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleUseCurrentGps}
@@ -305,7 +281,7 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
                     className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
                   >
                     <Navigation className={`w-3.5 h-3.5 ${isLocatingGps ? 'animate-spin' : ''}`} />
-                    <span>{isLocatingGps ? 'Locating...' : 'Use My GPS Location'}</span>
+                    <span>{isLocatingGps ? 'Detecting via GPS / IP...' : 'Detect My Exact Location'}</span>
                   </button>
 
                   {onFocusStartingPointOnMap && (
@@ -337,7 +313,7 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
                     type="text"
                     value={originSearchQuery}
                     onChange={(e) => setOriginSearchQuery(e.target.value)}
-                    placeholder="Search city, station, airport..."
+                    placeholder="Search city, station, airport (e.g. Hyderabad, Mumbai, Delhi)..."
                     className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900"
                   />
                   {originSearchQuery && (
@@ -387,7 +363,7 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
                 {/* 1-Click Starting Hubs */}
                 <div className="pt-2 border-t border-slate-100">
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                    Quick Starting Points:
+                    Quick Major Departure Hubs:
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {QUICK_STARTING_HUBS.map((hub, idx) => (
@@ -418,12 +394,14 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
             )}
           </div>
 
-          {/* Segment 2: Destination City / Region */}
+          {/* Segment 2: Destination City / Region (Manual Selection - No Default Forced) */}
           <div className="relative" ref={destFlyoutRef}>
             <div
               onClick={() => setIsSelectingDestination(!isSelectingDestination)}
               className={`p-3 rounded-xl border transition-all cursor-pointer group ${
-                isSelectingDestination
+                !selectedRegion
+                  ? 'border-indigo-500 bg-indigo-50/40 ring-2 ring-indigo-500/20'
+                  : isSelectingDestination
                   ? 'border-indigo-600 ring-2 ring-indigo-600/10 bg-indigo-50/20'
                   : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
               }`}
@@ -433,20 +411,35 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
                   <Navigation className="w-3.5 h-3.5" />
                   <span>2. Destination Hub</span>
                 </span>
-                <span className="text-[10px] text-indigo-600 group-hover:underline">
-                  {isSelectingDestination ? 'Close' : 'Switch'}
+                <span className="text-[10px] text-indigo-600 font-bold group-hover:underline">
+                  {!selectedRegion ? 'Select City' : isSelectingDestination ? 'Close' : 'Switch'}
                 </span>
               </div>
-              <div className="font-bold text-slate-900 text-sm truncate flex items-center justify-between">
-                <span className="truncate">{selectedRegion.name}</span>
-                <span className="text-[11px] font-mono font-semibold text-slate-500">
-                  {selectedRegion.destinations.length} spots
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-500 truncate mt-0.5">
-                {selectedRegion.state}
-                {selectedRegion.country ? `, ${selectedRegion.country}` : ''}
-              </div>
+
+              {selectedRegion ? (
+                <>
+                  <div className="font-bold text-slate-900 text-sm truncate flex items-center justify-between">
+                    <span className="truncate">{selectedRegion.name}</span>
+                    <span className="text-[11px] font-mono font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded">
+                      {selectedRegion.destinations.length} spots
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                    {selectedRegion.state}
+                    {selectedRegion.country ? `, ${selectedRegion.country}` : ''}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="font-bold text-indigo-900 text-sm truncate flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping shrink-0" />
+                    <span>Choose Destination</span>
+                  </div>
+                  <div className="text-[11px] text-indigo-600 font-medium truncate mt-0.5">
+                    Tap to pick Goa, Mumbai, Paris, etc.
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Destination Selection Dropdown */}
@@ -454,7 +447,7 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
               <div className="absolute left-0 top-full mt-2 w-full sm:w-96 bg-white rounded-xl shadow-xl border border-slate-200 p-3.5 z-40 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-900">
-                    Select Destination City / Region:
+                    Select Destination City / Circuit:
                   </span>
                   <button
                     onClick={() => setIsSelectingDestination(false)}
@@ -470,7 +463,7 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
                     type="text"
                     value={destSearchQuery}
                     onChange={(e) => setDestSearchQuery(e.target.value)}
-                    placeholder="Search city, state, or country..."
+                    placeholder="Search city (Goa, Jaipur, Paris, Mumbai, Tokyo)..."
                     className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900"
                   />
                 </div>
@@ -537,7 +530,7 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
                 )}
 
                 {/* Regions List */}
-                <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-lg">
+                <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-lg">
                   {filteredRegions.map((region) => (
                     <button
                       key={region.id}
@@ -547,7 +540,7 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
                         setDestSearchQuery('');
                       }}
                       className={`w-full text-left p-2.5 hover:bg-slate-50 text-xs transition-colors cursor-pointer flex items-center justify-between ${
-                        selectedRegion.id === region.id ? 'bg-indigo-50/70 font-bold text-indigo-950' : 'text-slate-800'
+                        selectedRegion?.id === region.id ? 'bg-indigo-50/70 font-bold text-indigo-950' : 'text-slate-800'
                       }`}
                     >
                       <div>
@@ -556,7 +549,7 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
                           {region.state}{region.country ? `, ${region.country}` : ''}
                         </div>
                       </div>
-                      <span className="text-[10px] font-mono text-slate-500">
+                      <span className="text-[10px] font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded font-semibold">
                         {region.destinations.length} spots
                       </span>
                     </button>

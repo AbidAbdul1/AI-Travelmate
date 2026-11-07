@@ -18,6 +18,8 @@ import { TripWorkflowHeader } from './components/TripWorkflowHeader';
 import { AICostEstimationCard } from './components/AICostEstimationCard';
 import { TripExportModal } from './components/TripExportModal';
 import { PackingListModal } from './components/PackingListModal';
+import { DestinationShowcase } from './components/DestinationShowcase';
+import { detectUserLocation } from './utils/locationService';
 import { useLanguage } from './context/LanguageContext';
 import {
   PILOT_DESTINATIONS,
@@ -53,13 +55,12 @@ export default function App() {
   const { t, currency, currencySymbol } = useLanguage();
   const [activeTab, setActiveTab] = useState<'explore' | 'recommendations' | 'itinerary' | 'assistant' | 'saved'>('explore');
 
-  // Active Region / Destination State (default: Vijayawada Pilot)
-  const [activeRegionId, setActiveRegionId] = useState<string>('vijayawada');
-  const activeRegion = ALL_REGIONS.find((r) => r.id === activeRegionId) || ALL_REGIONS[0];
+  // Active Region / Destination State (null by default - user selects destination manually)
+  const [selectedRegion, setSelectedRegion] = useState<WorldRegion | null>(null);
 
-  // Core Data States
-  const [destinations, setDestinations] = useState<Destination[]>(PILOT_DESTINATIONS);
-  const [selectedDestination, setSelectedDestination] = useState<Destination | null>(PILOT_DESTINATIONS[0]);
+  // Core Data States (starts empty until user chooses a destination)
+  const [destinations, setDestinations] = useState<Destination[]>([]);
+  const [selectedDestination, setSelectedDestination] = useState<Destination | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<DestinationCategory>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -136,11 +137,22 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // 1. Initial Load: Weather, Saved Trips & Traffic (starts with clean self-planning itinerary)
+  // 1. Initial Load: Auto-detect traveler's GPS/IP location, fetch local weather & saved trips
   useEffect(() => {
-    fetchWeather(VIJAYAWADA_ORIGIN.latitude, VIJAYAWADA_ORIGIN.longitude, 'Vijayawada, AP');
+    detectUserLocation()
+      .then((loc) => {
+        setPreferences((prev) => ({
+          ...prev,
+          startingLocation: loc,
+        }));
+        fetchWeather(loc.latitude, loc.longitude, loc.name);
+      })
+      .catch((err) => {
+        console.warn('Location detection fallback:', err);
+        fetchWeather(VIJAYAWADA_ORIGIN.latitude, VIJAYAWADA_ORIGIN.longitude, VIJAYAWADA_ORIGIN.name);
+      });
+
     fetchSavedTrips();
-    fetchTrafficPrediction('bandar-road-corridor', preferences.departureTime);
   }, []);
 
   // Re-estimate cost when currency changes
@@ -188,7 +200,7 @@ export default function App() {
     }));
     setItinerary({
       id: `itinerary-${Date.now()}`,
-      title: `${activeRegion.name} Custom Plan`,
+      title: selectedRegion ? `${selectedRegion.name} Custom Plan` : 'Custom Travel Plan',
       startingLocation: preferences.startingLocation,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -201,11 +213,15 @@ export default function App() {
   };
 
   const handleAutoFillItinerary = () => {
-    fetchItineraryForRegion(activeRegion, preferences.startingLocation);
-    showToast(`✨ Generated optimized itinerary for ${activeRegion.name}!`);
+    if (selectedRegion) {
+      fetchItineraryForRegion(selectedRegion, preferences.startingLocation);
+      showToast(`✨ Generated optimized itinerary for ${selectedRegion.name}!`);
+    } else {
+      showToast('Please select a destination city first to auto-fill an itinerary.');
+    }
   };
 
-  const fetchTrafficPrediction = async (segmentId: string, depTime: string) => {
+  const fetchTrafficPrediction = async (segmentId: string, depTime: string, locName?: string) => {
     setIsTrafficLoading(true);
     try {
       const resp = await fetch('/api/traffic/predict', {
@@ -216,6 +232,7 @@ export default function App() {
           departureTime: depTime,
           dayOfWeek: new Date().toLocaleDateString('en-US', { weekday: 'long' }),
           rainfallMm: weather?.current?.precipitationMm || 0,
+          locationName: locName || selectedRegion?.name || 'Urban Core',
         }),
       });
       const data = await resp.json();
@@ -288,7 +305,7 @@ export default function App() {
           origin: preferences.startingLocation,
           destinations: dests,
           tripDurationDays: daysCount,
-          title: `${activeRegion.name} ${daysCount}-Day Travel Plan`,
+          title: `${selectedRegion?.name || 'Custom'} ${daysCount}-Day Travel Plan`,
         }),
       });
       const data = await resp.json();
@@ -351,12 +368,15 @@ export default function App() {
 
   // Step 2: Destination City / Region Selection Handler
   const handleSelectDestinationRegion = (region: WorldRegion) => {
-    setActiveRegionId(region.id);
+    setSelectedRegion(region);
     setDestinations(region.destinations);
 
     if (region.destinations.length > 0) {
       setSelectedDestination(region.destinations[0]);
       handleCalculateRoute(region.destinations[0]);
+    } else {
+      setSelectedDestination(null);
+      setActiveRoute(null);
     }
 
     // Live weather for destination
@@ -364,10 +384,10 @@ export default function App() {
 
     // Traffic prediction for destination corridors
     if (region.corridors && region.corridors.length > 0) {
-      fetchTrafficPrediction(region.corridors[0].id, preferences.departureTime);
+      fetchTrafficPrediction(region.corridors[0].id, preferences.departureTime, region.name);
     }
 
-    showToast(`Loaded ${region.destinations.length} popular spots in ${region.name}! Click '+ Add to Plan' on any spot to plan your trip.`);
+    showToast(`✨ Selected ${region.name}! Loaded ${region.destinations.length} popular spots.`);
   };
 
   const fetchItineraryForRegion = async (
@@ -403,8 +423,8 @@ export default function App() {
     try {
       const catParam = cat !== 'All' ? `&category=${encodeURIComponent(cat)}` : '';
       const qParam = queryText ? `&q=${encodeURIComponent(queryText)}` : '';
-      // When searching with a text query, do not restrict to activeRegionId so user can discover places worldwide
-      const regionParam = queryText.trim() ? '' : `&regionId=${activeRegionId}`;
+      // When searching with a text query, do not restrict to region so user can discover places worldwide
+      const regionParam = queryText.trim() ? '' : (selectedRegion ? `&regionId=${selectedRegion.id}` : '');
       const resp = await fetch(
         `/api/destinations/search?latitude=${preferences.startingLocation.latitude}&longitude=${preferences.startingLocation.longitude}${qParam}${catParam}${regionParam}`
       );
@@ -476,11 +496,16 @@ export default function App() {
     setSearchQuery('');
     setDiscoveredCityLabel(null);
     setSelectedCategory('All');
-    setDestinations(activeRegion.destinations);
-    if (activeRegion.destinations.length > 0) {
-      setSelectedDestination(activeRegion.destinations[0]);
+    if (selectedRegion) {
+      setDestinations(selectedRegion.destinations);
+      if (selectedRegion.destinations.length > 0) {
+        setSelectedDestination(selectedRegion.destinations[0]);
+      }
+      showToast(`Reset to ${selectedRegion.name} spots.`);
+    } else {
+      setDestinations([]);
+      setSelectedDestination(null);
     }
-    showToast(`Reset to ${activeRegion.name} catalog.`);
   };
 
   // Calculate Route
@@ -507,7 +532,7 @@ export default function App() {
       if (resp.ok && data.success) {
         setActiveRoute(data);
         showToast(`Route: ${data.distanceKm} km (~${data.trafficAdjustedDurationMin} mins)`);
-        fetchTrafficPrediction(dest.id, preferences.departureTime);
+        fetchTrafficPrediction(dest.id, preferences.departureTime, dest.name);
       }
     } catch (err) {
       console.error('Route error:', err);
@@ -521,7 +546,7 @@ export default function App() {
     if (!itinerary) {
       const newPlan: ItineraryPlan = {
         id: `itinerary-${Date.now()}`,
-        title: `${activeRegion.name} Custom Plan`,
+        title: `${selectedRegion?.name || 'Custom'} Custom Plan`,
         startingLocation: preferences.startingLocation,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -760,7 +785,7 @@ export default function App() {
         <TripWorkflowHeader
           startingLocation={preferences.startingLocation}
           onSelectStartingLocation={handleSelectStartingLocation}
-          selectedRegion={activeRegion}
+          selectedRegion={selectedRegion}
           onSelectRegion={handleSelectDestinationRegion}
           itemsInPlanCount={itemsInPlanCount}
           totalEstimatedCost={costEstimation?.totalEstimatedCost || 0}
@@ -777,37 +802,94 @@ export default function App() {
         {/* TAB 1: EXPLORE POPULAR PLACES & ESTIMATE COSTS */}
         {activeTab === 'explore' && (
           <div className="space-y-6">
-            {/* Live AI Cost Estimation Card (Displays whenever places are in the plan) */}
-            {itemsInPlanCount > 0 && (
-              <AICostEstimationCard
-                estimation={costEstimation}
-                isLoading={isCostEstimating}
-                onRefresh={() => fetchCostEstimation()}
-                onUpdateParams={(params) => {
-                  if (params.travelersCount) setTravelersCount(params.travelersCount);
-                  if (params.travelStyle) setTravelStyle(params.travelStyle);
-                  if (params.tripDurationDays) {
-                    setPreferences((prev) => ({ ...prev, tripDurationDays: params.tripDurationDays! }));
-                  }
-                  fetchCostEstimation(undefined, undefined, params);
-                }}
-                customBudgetAmount={preferences.customBudgetAmount}
+            {!selectedRegion ? (
+              <DestinationShowcase
+                onSelectRegion={handleSelectDestinationRegion}
+                onSearchCustomCity={handleGeminiSearch}
+                isSearching={isAiSearching}
               />
-            )}
+            ) : (
+              <>
+                {/* Active Destination Top Bar */}
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+                      <MapPin className="w-5 h-5 text-indigo-400" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                          Active Destination
+                        </span>
+                        <span className="text-xs text-slate-500 font-medium">
+                          {destinations.length} popular spots loaded
+                        </span>
+                      </div>
+                      <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 mt-0.5">
+                        <span>{selectedRegion.name}</span>
+                        <span className="text-xs font-normal text-slate-500">· {selectedRegion.state}, {selectedRegion.country}</span>
+                      </h2>
+                    </div>
+                  </div>
 
-            {/* Split Screen Layout: Map & Controls (Left 55%) + Destination Cards & Weather (Right 45%) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Column: Interactive Map & Live Traffic Card (Sticky on Desktop) */}
-              <div className="lg:col-span-7 space-y-4 lg:sticky lg:top-20" id="interactive-map-section">
-                <div className="h-[500px]">
-                  <InteractiveMap
-                    destinations={destinations}
-                    selectedDestination={selectedDestination}
-                    onSelectDestination={(d) => {
-                      setSelectedDestination(d);
-                      handleCalculateRoute(d);
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedRegion(null);
+                        setDestinations([]);
+                        setSelectedDestination(null);
+                        setActiveRoute(null);
+                      }}
+                      className="flex-1 sm:flex-initial px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-slate-200"
+                    >
+                      <Globe className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Change Destination</span>
+                    </button>
+                    {itemsInPlanCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('itinerary')}
+                        className="flex-1 sm:flex-initial px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                      >
+                        <span>View Itinerary ({itemsInPlanCount})</span>
+                        <ArrowRight className="w-3.5 h-3.5 text-indigo-300" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Live AI Cost Estimation Card (Displays whenever places are in the plan) */}
+                {itemsInPlanCount > 0 && (
+                  <AICostEstimationCard
+                    estimation={costEstimation}
+                    isLoading={isCostEstimating}
+                    onRefresh={() => fetchCostEstimation()}
+                    onUpdateParams={(params) => {
+                      if (params.travelersCount) setTravelersCount(params.travelersCount);
+                      if (params.travelStyle) setTravelStyle(params.travelStyle);
+                      if (params.tripDurationDays) {
+                        setPreferences((prev) => ({ ...prev, tripDurationDays: params.tripDurationDays! }));
+                      }
+                      fetchCostEstimation(undefined, undefined, params);
                     }}
-                    activeRoute={activeRoute}
+                    customBudgetAmount={preferences.customBudgetAmount}
+                  />
+                )}
+
+                {/* Split Screen Layout: Map & Controls (Left 55%) + Destination Cards & Weather (Right 45%) */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  {/* Left Column: Interactive Map & Live Traffic Card (Sticky on Desktop) */}
+                  <div className="lg:col-span-7 space-y-4 lg:sticky lg:top-20" id="interactive-map-section">
+                    <div className="h-[500px]">
+                      <InteractiveMap
+                        destinations={destinations}
+                        selectedDestination={selectedDestination}
+                        onSelectDestination={(d) => {
+                          setSelectedDestination(d);
+                          handleCalculateRoute(d);
+                        }}
+                        activeRoute={activeRoute}
                     originLocation={preferences.startingLocation}
                     onAddToItinerary={handleAddToItinerary}
                     onSetUserLocation={(loc) => handleSelectStartingLocation(loc)}
@@ -966,10 +1048,11 @@ export default function App() {
                   weather={weather}
                   isLoading={isWeatherLoading}
                   onRefresh={() =>
+                    selectedRegion &&
                     fetchWeather(
-                      activeRegion.latitude,
-                      activeRegion.longitude,
-                      activeRegion.name
+                      selectedRegion.latitude,
+                      selectedRegion.longitude,
+                      selectedRegion.name
                     )
                   }
                 />
@@ -980,7 +1063,7 @@ export default function App() {
                     <span className="font-semibold text-slate-700">
                       {discoveredCityLabel
                         ? `Popular Places for "${discoveredCityLabel}"`
-                        : `Popular Places in ${activeRegion.name}`} ({destinations.length})
+                        : `Popular Places in ${selectedRegion.name}`} ({destinations.length})
                     </span>
                     <span>Click 'Add' to estimate budget</span>
                   </div>
@@ -1006,8 +1089,10 @@ export default function App() {
                 </div>
               </div>
             </div>
-          </div>
+          </>
         )}
+      </div>
+    )}
 
         {/* TAB 2: PERSONALIZED RECOMMENDATIONS */}
         {activeTab === 'recommendations' && (
@@ -1183,7 +1268,7 @@ export default function App() {
                       handleCalculateRoute(match);
                     }
                   }}
-                  tripContextSummary={`Trip preferences: ${preferences.budget} budget, ${preferences.tripDurationDays} day(s), origin at ${preferences.startingLocation.name}. Current destination: ${activeRegion.name}.`}
+                  tripContextSummary={`Trip preferences: ${preferences.budget} budget, ${preferences.tripDurationDays} day(s), origin at ${preferences.startingLocation.name}. Current destination: ${selectedRegion ? selectedRegion.name : 'Selected Destination'}.`}
                 />
               </div>
 
@@ -1193,11 +1278,17 @@ export default function App() {
                   weather={weather}
                   isLoading={isWeatherLoading}
                   onRefresh={() =>
-                    fetchWeather(
-                      activeRegion.latitude,
-                      activeRegion.longitude,
-                      activeRegion.name
-                    )
+                    selectedRegion
+                      ? fetchWeather(
+                          selectedRegion.latitude,
+                          selectedRegion.longitude,
+                          selectedRegion.name
+                        )
+                      : fetchWeather(
+                          preferences.startingLocation.latitude,
+                          preferences.startingLocation.longitude,
+                          preferences.startingLocation.name
+                        )
                   }
                 />
 
