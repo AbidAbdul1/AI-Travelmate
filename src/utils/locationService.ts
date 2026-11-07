@@ -1,6 +1,9 @@
 /**
- * High-Reliability Geolocation Service with Multi-Tier Fallback (Browser GPS -> Wifi/Cell -> Server IP Geolocation)
- * Solves iframe sandbox permission restrictions, desktop timeouts, and inaccurate coordinate issues.
+ * High-Reliability Geolocation Service with Multi-Tier Fallback:
+ * 1. Hardware Browser GPS (10s generous timeout so user has time to click 'Allow')
+ * 2. Direct Client-Side Browser IP Lookup (ipwho.is, freeipapi.com, ipapi.co)
+ * 3. Server-side proxy check (strictly discarding datacenter container IPs)
+ * 4. Graceful Indian regional transit hub preset
  */
 
 export interface DetectedLocation {
@@ -13,14 +16,21 @@ export interface DetectedLocation {
   source: 'gps-high-accuracy' | 'network-coarse' | 'ip-geolocation' | 'preset';
 }
 
+// Discard false datacenter readings (such as cloud container IPs in Taiwan / Google LLC)
+function isDatacenterLocation(country?: string, city?: string, org?: string): boolean {
+  if (country === 'Taiwan' || city === 'Taipei') return true;
+  if (org && /Google|Amazon|Microsoft|Cloud|DigitalOcean/i.test(org)) return true;
+  return false;
+}
+
 export async function detectUserLocation(): Promise<DetectedLocation> {
-  // Step 1: Try browser geolocation (Tier 1: High Accuracy, 4s timeout)
+  // Step 1: Try real browser geolocation with generous timeout
   if (typeof navigator !== 'undefined' && navigator.geolocation) {
     try {
       const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: true,
-          timeout: 4500,
+          timeout: 10000,
           maximumAge: 30000,
         });
       });
@@ -36,38 +46,85 @@ export async function detectUserLocation(): Promise<DetectedLocation> {
         source: 'gps-high-accuracy',
       };
     } catch (gpsHighErr) {
-      // Step 2: Try browser geolocation (Tier 2: Coarse Network Accuracy, 3s timeout)
-      try {
-        const coarsePos = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: false,
-            timeout: 3500,
-            maximumAge: 60000,
-          });
-        });
-
-        const lat = coarsePos.coords.latitude;
-        const lon = coarsePos.coords.longitude;
-        const reverseName = await reverseGeocodeCoord(lat, lon);
-
-        return {
-          name: reverseName || `Current Location (${lat.toFixed(4)}, ${lon.toFixed(4)})`,
-          latitude: lat,
-          longitude: lon,
-          source: 'network-coarse',
-        };
-      } catch (gpsCoarseErr) {
-        console.warn('Browser GPS unavailable or timed out in iframe, falling back to IP Geolocation...');
-      }
+      console.warn('High-accuracy GPS failed or timed out, trying coarse / client IP...');
     }
   }
 
-  // Step 3: Tier 3 - IP-Based Geolocation via Backend Proxy
+  // Step 2: Direct Client-Side Browser IP Geolocation (Queries directly from traveler's browser/ISP)
+  // 2A: ipwho.is (Free, CORS-friendly, SSL, returns city, region, country, lat, lon)
+  try {
+    const res = await fetch('https://ipwho.is/', {
+      headers: { Accept: 'application/json' },
+    });
+    if (res.ok) {
+      const d = await res.json();
+      if (d.success && d.latitude && d.longitude && !isDatacenterLocation(d.country, d.city, d.connection?.org)) {
+        const placeName = [d.city, d.region, d.country].filter(Boolean).join(', ');
+        return {
+          name: placeName || `${d.city}, ${d.country}`,
+          latitude: Number(d.latitude),
+          longitude: Number(d.longitude),
+          city: d.city,
+          state: d.region,
+          country: d.country,
+          source: 'ip-geolocation',
+        };
+      }
+    }
+  } catch (ipWhoErr) {
+    console.warn('ipwho.is client lookup failed:', ipWhoErr);
+  }
+
+  // 2B: freeipapi.com fallback
+  try {
+    const res2 = await fetch('https://freeipapi.com/api/json');
+    if (res2.ok) {
+      const d2 = await res2.json();
+      if (d2.latitude && d2.longitude && !isDatacenterLocation(d2.countryName, d2.cityName)) {
+        const placeName = [d2.cityName, d2.regionName, d2.countryName].filter(Boolean).join(', ');
+        return {
+          name: placeName || `${d2.cityName}, ${d2.countryName}`,
+          latitude: Number(d2.latitude),
+          longitude: Number(d2.longitude),
+          city: d2.cityName,
+          state: d2.regionName,
+          country: d2.countryName,
+          source: 'ip-geolocation',
+        };
+      }
+    }
+  } catch (freeIpErr) {
+    console.warn('freeipapi lookup failed:', freeIpErr);
+  }
+
+  // 2C: ipapi.co direct client fallback
+  try {
+    const res3 = await fetch('https://ipapi.co/json/');
+    if (res3.ok) {
+      const d3 = await res3.json();
+      if (d3.latitude && d3.longitude && !isDatacenterLocation(d3.country_name, d3.city, d3.org)) {
+        const placeName = [d3.city, d3.region, d3.country_name].filter(Boolean).join(', ');
+        return {
+          name: placeName,
+          latitude: Number(d3.latitude),
+          longitude: Number(d3.longitude),
+          city: d3.city,
+          state: d3.region,
+          country: d3.country_name,
+          source: 'ip-geolocation',
+        };
+      }
+    }
+  } catch (ipapiErr) {
+    console.warn('ipapi.co direct lookup failed:', ipapiErr);
+  }
+
+  // Step 3: Backend proxy geocode (Only if backend resolved a non-datacenter client IP)
   try {
     const ipRes = await fetch('/api/geocode/ip');
     if (ipRes.ok) {
       const data = await ipRes.json();
-      if (data.success && data.latitude && data.longitude) {
+      if (data.success && data.latitude && data.longitude && !isDatacenterLocation(data.country, data.city)) {
         return {
           name: data.name || `${data.city || 'Detected Location'}, ${data.region || data.country || ''}`,
           latitude: data.latitude,
@@ -79,33 +136,11 @@ export async function detectUserLocation(): Promise<DetectedLocation> {
         };
       }
     }
-  } catch (ipErr) {
-    console.warn('Backend IP geolocator failed, attempting direct IP check:', ipErr);
+  } catch (backendIpErr) {
+    console.warn('Backend proxy lookup failed:', backendIpErr);
   }
 
-  // Step 4: Tier 4 - Client-side public IP fallback
-  try {
-    const directIpRes = await fetch('https://ipapi.co/json/');
-    if (directIpRes.ok) {
-      const data = await directIpRes.json();
-      if (data.latitude && data.longitude) {
-        const placeName = data.city && data.region ? `${data.city}, ${data.region}` : data.city || 'My Location';
-        return {
-          name: placeName,
-          latitude: data.latitude,
-          longitude: data.longitude,
-          city: data.city,
-          state: data.region,
-          country: data.country_name,
-          source: 'ip-geolocation',
-        };
-      }
-    }
-  } catch (directErr) {
-    console.warn('Direct IP check failed:', directErr);
-  }
-
-  // Final graceful fallback if completely offline or restricted
+  // Step 4: Graceful regional transit hub default (Central South India Hub)
   return {
     name: 'Hyderabad Central Junction, Telangana, India',
     latitude: 17.4339,

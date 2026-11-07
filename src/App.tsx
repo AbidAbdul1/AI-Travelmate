@@ -146,6 +146,11 @@ export default function App() {
           startingLocation: loc,
         }));
         fetchWeather(loc.latitude, loc.longitude, loc.name);
+        if (loc.source === 'gps-high-accuracy') {
+          showToast(`📍 GPS Locked: ${loc.name.split(',')[0]}`);
+        } else if (loc.source === 'ip-geolocation') {
+          showToast(`🌐 Location Synced: ${loc.name.split(',')[0]}`);
+        }
       })
       .catch((err) => {
         console.warn('Location detection fallback:', err);

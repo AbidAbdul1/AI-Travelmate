@@ -18,6 +18,8 @@ import {
   Minus,
   Check,
   ChevronDown,
+  Smartphone,
+  Info,
 } from 'lucide-react';
 
 interface TripWorkflowHeaderProps {
@@ -39,13 +41,15 @@ interface TripWorkflowHeaderProps {
 
 // Popular starting points across major transport hubs for 1-click selection
 const QUICK_STARTING_HUBS = [
+  { name: 'Vijayawada Central Junction', lat: 16.5179, lon: 80.6196, type: 'train' },
   { name: 'Hyderabad Secunderabad', lat: 17.4339, lon: 78.5042, type: 'train' },
+  { name: 'Visakhapatnam Junction', lat: 17.7214, lon: 83.2926, type: 'train' },
   { name: 'Bengaluru Majestic', lat: 12.9778, lon: 77.5714, type: 'train' },
+  { name: 'Chennai Central Station', lat: 13.0827, lon: 80.2707, type: 'train' },
   { name: 'Mumbai CSMT Station', lat: 18.9402, lon: 72.8356, type: 'train' },
   { name: 'New Delhi CP Hub', lat: 28.6315, lon: 77.2167, type: 'city' },
-  { name: 'Visakhapatnam Station', lat: 17.7214, lon: 83.2926, type: 'train' },
-  { name: 'Vijayawada Central Junction', lat: 16.5179, lon: 80.6196, type: 'train' },
-  { name: 'Chennai Central Station', lat: 13.0827, lon: 80.2707, type: 'train' },
+  { name: 'Kolkata Howrah', lat: 22.5830, lon: 88.3426, type: 'train' },
+  { name: 'Goa Madgaon Hub', lat: 15.2736, lon: 73.9582, type: 'train' },
 ];
 
 export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
@@ -142,9 +146,14 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
         longitude: loc.longitude,
       });
       setDetectedLocationSource(loc.source);
-      setIsEditingOrigin(false);
-      if (onFocusStartingPointOnMap) {
-        onFocusStartingPointOnMap();
+
+      if (loc.source === 'preset') {
+        setGpsError('Browser geolocation was blocked or timed out. Please choose your departure city below or search.');
+      } else {
+        setIsEditingOrigin(false);
+        if (onFocusStartingPointOnMap) {
+          onFocusStartingPointOnMap();
+        }
       }
     } catch (err: any) {
       console.warn('Location detection error:', err);
@@ -297,6 +306,17 @@ export const TripWorkflowHeader: React.FC<TripWorkflowHeaderProps> = ({
                       <span>Map</span>
                     </button>
                   )}
+                </div>
+
+                {/* Mobile Hotspot & Laptop Context Advice */}
+                <div className="p-2.5 rounded-lg bg-indigo-50/80 border border-indigo-200/80 text-[11px] text-indigo-950 leading-relaxed flex items-start gap-2">
+                  <Smartphone className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-indigo-900 block">Connected via Mobile Hotspot on a Laptop?</span>
+                    <span className="text-slate-600 text-[10.5px]">
+                      Laptops lack hardware GPS chips and cellular hotspots route through distant telecom switching centers. You can type your exact city below, select a 1-click Hub, or open this app on your phone for satellite GPS!
+                    </span>
+                  </div>
                 </div>
 
                 {gpsError && (

@@ -324,14 +324,30 @@ app.get('/api/geocode/ip', async (req: Request, res: Response) => {
       ip = ''; // Let external service detect public IP
     }
 
+    // Helper to detect if result is server's own Google Cloud container datacenter
+    const isDatacenter = (country?: string, city?: string, org?: string) => {
+      if (country === 'Taiwan' || city === 'Taipei') return true;
+      if (org && /Google|Amazon|Microsoft|Cloud|DigitalOcean/i.test(org)) return true;
+      return false;
+    };
+
+    // If no client IP was forwarded, do NOT query ipapi with empty string (it would geolocate the server container)
+    if (!ip) {
+      return res.json({
+        success: false,
+        error: 'NO_CLIENT_IP',
+        message: 'No client IP forwarded by proxy. Please use client-side browser geolocation.',
+      });
+    }
+
     // Try ipapi.co
     try {
-      const geoRes = await fetch(`https://ipapi.co/${ip ? `${ip}/` : ''}json/`, {
+      const geoRes = await fetch(`https://ipapi.co/${ip}/json/`, {
         headers: { 'User-Agent': 'AI-TRAVELMATE/1.0' },
       });
       if (geoRes.ok) {
         const d = await geoRes.json();
-        if (d.latitude && d.longitude) {
+        if (d.latitude && d.longitude && !isDatacenter(d.country_name, d.city, d.org)) {
           const cityName = d.city || d.region || 'Current Hub';
           const regionName = d.region || d.country_name || '';
           const name = regionName ? `${cityName}, ${regionName}` : cityName;
@@ -353,10 +369,10 @@ app.get('/api/geocode/ip', async (req: Request, res: Response) => {
 
     // Secondary fallback: ip-api.com
     try {
-      const geoRes2 = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,lat,lon`);
+      const geoRes2 = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,lat,lon,isp,org`);
       if (geoRes2.ok) {
         const d2 = await geoRes2.json();
-        if (d2.status === 'success' && d2.lat && d2.lon) {
+        if (d2.status === 'success' && d2.lat && d2.lon && !isDatacenter(d2.country, d2.city, d2.org || d2.isp)) {
           const name = `${d2.city}, ${d2.regionName || d2.country}`;
           return res.json({
             success: true,
@@ -374,15 +390,10 @@ app.get('/api/geocode/ip', async (req: Request, res: Response) => {
       console.warn('ip-api lookup failed:', e2);
     }
 
-    // Default Central India Hub fallback
     return res.json({
-      success: true,
-      source: 'default-hub',
-      name: 'Secunderabad Junction, Hyderabad, Telangana',
-      latitude: 17.4339,
-      longitude: 78.5042,
-      city: 'Hyderabad',
-      country: 'India',
+      success: false,
+      error: 'DATACENTER_OR_UNKNOWN_IP',
+      message: 'Client public IP belongs to a proxy or datacenter. Browser GPS or client lookup recommended.',
     });
   } catch (err: any) {
     return res.status(500).json({ error: { code: 'IP_GEOCODE_FAILED', message: err.message } });

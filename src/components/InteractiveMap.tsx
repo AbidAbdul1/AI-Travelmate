@@ -467,7 +467,8 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   // Device GPS Locate Me
   const handleMapLocateMe = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
+      setMapStatusMessage('Geolocation is not supported by your browser.');
+      setTimeout(() => setMapStatusMessage(null), 4000);
       return;
     }
 
