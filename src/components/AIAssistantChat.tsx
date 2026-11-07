@@ -89,19 +89,19 @@ export const AIAssistantChat: React.FC<AIAssistantChatProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-xs flex flex-col h-[650px] overflow-hidden">
+    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.04)] flex flex-col h-[650px] overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+      <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
-            <Sparkles className="w-4 h-4" />
+          <div className="w-9 h-9 rounded-xl bg-slate-950 text-white flex items-center justify-center shadow-xs">
+            <Sparkles className="w-4 h-4 text-amber-400" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900 leading-tight">
-              AI Travel Assistant
+            <h3 className="font-display text-sm font-extrabold text-slate-900 leading-tight">
+              AI Travel Concierge & Route Advisor
             </h3>
             <p className="text-[11px] text-slate-500">
-              Grounded in Vijayawada Pilot data & live Open-Meteo weather
+              Grounded with live coordinates, entry tickets & real-time weather
             </p>
           </div>
         </div>

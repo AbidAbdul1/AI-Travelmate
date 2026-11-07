@@ -51,37 +51,42 @@ export const Navbar: React.FC<NavbarProps> = ({
   const currentLangObj = SUPPORTED_LANGUAGES.find((l) => l.code === language) || SUPPORTED_LANGUAGES[0];
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200">
+    <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-4 h-16">
-          {/* Brand Wordmark */}
+          {/* Brand Wordmark - Luxury Travel Studio Style */}
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => setActiveTab('explore')}
-              className="flex items-center gap-2.5 text-left focus:outline-none cursor-pointer"
+              className="flex items-center gap-2.5 text-left focus:outline-none cursor-pointer group"
             >
-              <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-xs">
-                <Compass className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-slate-950 text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
+                <Compass className="w-5 h-5 text-indigo-400" />
               </div>
-              <div>
-                <span className="text-base sm:text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap">
-                  {t('appTitle', 'AI-TRAVELMATE')}
-                </span>
-                <span className="hidden lg:inline-block ml-2 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                  Worldwide & Pilot Ready
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <span className="font-display text-lg font-extrabold tracking-tight text-slate-900 whitespace-nowrap">
+                    {t('appTitle', 'TRAVELMATE')}
+                  </span>
+                  <span className="text-[10px] font-semibold tracking-wider uppercase text-indigo-600 bg-indigo-50/80 px-1.5 py-0.5 rounded-sm">
+                    AI Studio
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-500 font-medium tracking-normal -mt-0.5 hidden sm:inline">
+                  Intelligent Travel & Route Suite
                 </span>
               </div>
             </button>
           </div>
 
-          {/* Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1">
+          {/* Navigation Links - Clean Editorial Style */}
+          <nav className="hidden md:flex items-center gap-1 lg:gap-1.5">
             <button
               onClick={() => setActiveTab('explore')}
-              className={`px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === 'explore'
-                  ? 'bg-slate-100 text-indigo-700 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
               }`}
             >
               {t('explore', 'Explore Places')}
@@ -89,10 +94,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => setActiveTab('recommendations')}
-              className={`px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === 'recommendations'
-                  ? 'bg-slate-100 text-indigo-700 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
               }`}
             >
               {t('recommendations', 'AI Recommender')}
@@ -100,52 +105,52 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => setActiveTab('itinerary')}
-              className={`px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'itinerary'
-                  ? 'bg-slate-100 text-indigo-700 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
               }`}
             >
-              <Calendar className="w-4 h-4 text-indigo-600" />
-              {t('itinerary', 'Trip Itinerary & Budget')}
+              <Calendar className="w-3.5 h-3.5" />
+              <span>{t('itinerary', 'Itinerary & Budget')}</span>
             </button>
 
             <button
               onClick={() => setActiveTab('assistant')}
-              className={`px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'assistant'
-                  ? 'bg-slate-100 text-indigo-700 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
               }`}
             >
-              <Sparkles className="w-4 h-4 text-indigo-600" />
-              {t('assistant', 'AI Travel Advisor')}
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>{t('assistant', 'AI Advisor')}</span>
             </button>
 
             <button
               onClick={() => setActiveTab('saved')}
-              className={`px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'saved'
-                  ? 'bg-slate-100 text-indigo-700 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
               }`}
             >
-              <Bookmark className="w-4 h-4 text-slate-500" />
+              <Bookmark className="w-3.5 h-3.5" />
               <span>{t('savedTrips', 'Saved Trips')}</span>
               {savedTripsCount > 0 && (
-                <span className="text-[11px] bg-indigo-100 text-indigo-800 font-bold px-1.5 py-0.2 rounded-full font-mono">
+                <span className="text-[10px] font-mono font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.2 rounded-md">
                   {savedTripsCount}
                 </span>
               )}
             </button>
           </nav>
 
-          {/* Right Controls: Quick Tools, Language Selector, Currency, Diagnostics */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Right Zone Controls: Clean & Uncluttered */}
+          <div className="flex items-center gap-2 shrink-0">
             {onOpenPackingList && (
               <button
                 onClick={onOpenPackingList}
-                className="hidden lg:flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200/80 transition-colors cursor-pointer"
                 title="Smart Packing List Generator"
               >
                 <Shirt className="w-3.5 h-3.5 text-indigo-600" />
@@ -156,7 +161,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {onOpenExportSheet && (
               <button
                 onClick={onOpenExportSheet}
-                className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200/80 transition-colors cursor-pointer"
                 title="Print or Save Offline Travel Sheet PDF"
               >
                 <FileText className="w-3.5 h-3.5 text-indigo-600" />

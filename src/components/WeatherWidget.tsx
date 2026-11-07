@@ -36,12 +36,12 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
   });
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+    <div className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.04)] space-y-4">
       {/* Header with Attribution */}
       <div className="flex items-start justify-between gap-4 pb-3 border-b border-slate-100">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-bold text-slate-900 tracking-tight">
+            <h3 className="font-display text-base font-extrabold text-slate-900 tracking-tight">
               Weather & Atmospheric Intelligence
             </h3>
             <span className="text-xs text-slate-500 font-medium">

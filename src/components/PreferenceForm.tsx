@@ -258,10 +258,10 @@ export const PreferenceForm: React.FC<PreferenceFormProps> = ({
   ) / 100;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+    <div className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.04)]">
       <div className="flex items-center justify-between pb-4 border-b border-slate-100">
         <div>
-          <h2 className="text-base font-bold text-slate-900 tracking-tight">
+          <h2 className="font-display text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
             Travel Preferences & Parameters
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">

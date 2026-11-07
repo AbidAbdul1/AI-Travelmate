@@ -37,6 +37,8 @@ import {
   Train,
   FileText,
   Shirt,
+  RotateCcw,
+  Plus,
 } from 'lucide-react';
 
 interface ItineraryBuilderProps {
@@ -48,6 +50,9 @@ interface ItineraryBuilderProps {
   customBudgetAmount?: number;
   onOpenExportSheet?: () => void;
   onOpenPackingList?: () => void;
+  onClearItinerary?: () => void;
+  onAutoFillPlan?: () => void;
+  onNavigateToExplore?: () => void;
 }
 
 export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
@@ -59,6 +64,9 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
   customBudgetAmount,
   onOpenExportSheet,
   onOpenPackingList,
+  onClearItinerary,
+  onAutoFillPlan,
+  onNavigateToExplore,
 }) => {
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [copiedSchedule, setCopiedSchedule] = useState(false);
@@ -263,15 +271,15 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+    <div className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.04)] space-y-5">
       {/* Title & Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">
+            <h2 className="font-display text-lg font-extrabold text-slate-900 tracking-tight">
               {itinerary.title}
             </h2>
-            <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-mono">
+            <span className="text-xs bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-lg font-mono font-semibold">
               {itinerary.totalDestinations} Stops
             </span>
           </div>
@@ -319,6 +327,28 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
             {copiedSchedule ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copiedSchedule ? 'Copied!' : 'Copy'}</span>
           </button>
+
+          {onClearItinerary && itinerary.totalDestinations > 0 && (
+            <button
+              onClick={onClearItinerary}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
+              title="Clear all destinations to start planning by yourself from scratch"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+              <span>Clear Plan</span>
+            </button>
+          )}
+
+          {onAutoFillPlan && itinerary.totalDestinations === 0 && (
+            <button
+              onClick={onAutoFillPlan}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer"
+              title="Auto-fill an AI recommended itinerary"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Auto-Suggest</span>
+            </button>
+          )}
 
           <button
             onClick={onSaveItinerary}
@@ -435,8 +465,39 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
             </div>
           </div>
 
-          <div className="space-y-3 relative before:absolute before:inset-0 before:left-3.5 before:w-0.5 before:bg-slate-200 before:z-0">
-            {currentDay.items.map((item, index) => {
+          {currentDay.items.length === 0 ? (
+            <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-300 rounded-xl space-y-3">
+              <Calendar className="w-8 h-8 text-indigo-500 mx-auto opacity-75" />
+              <div>
+                <h4 className="text-sm font-bold text-slate-800">Day {currentDay.dayNumber} is Ready for Your Custom Plan</h4>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                  You are in self-planning mode! Browse popular spots in your selected destination and click <strong>"+ Add to Plan"</strong> to build your customized route.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                {onNavigateToExplore && (
+                  <button
+                    onClick={onNavigateToExplore}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Browse & Pick Popular Spots</span>
+                  </button>
+                )}
+                {onAutoFillPlan && (
+                  <button
+                    onClick={onAutoFillPlan}
+                    className="px-3 py-1.5 bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-medium cursor-pointer flex items-center gap-1"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Auto-Suggest Initial Plan</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 relative before:absolute before:inset-0 before:left-3.5 before:w-0.5 before:bg-slate-200 before:z-0">
+              {currentDay.items.map((item, index) => {
               const isFirst = index === 0;
               const isLast = index === currentDay.items.length - 1;
 
@@ -585,8 +646,9 @@ export const ItineraryBuilder: React.FC<ItineraryBuilderProps> = ({
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    )}
 
       {/* Route Mode Comparison Modal (Car vs. Public Transit vs. Auto vs. Bike) */}
       <RouteModeComparisonModal

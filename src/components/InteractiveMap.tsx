@@ -512,7 +512,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   };
 
   return (
-    <div className="relative w-full h-full min-h-[460px] rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shadow-xs">
+    <div className="relative w-full h-full min-h-[480px] rounded-2xl overflow-hidden border border-slate-200/80 bg-slate-100 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.06)]">
       {/* Map DOM Container */}
       <div ref={mapContainerRef} className="w-full h-full z-10" />
 

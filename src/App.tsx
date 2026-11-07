@@ -96,8 +96,25 @@ export default function App() {
   const [trafficPrediction, setTrafficPrediction] = useState<TrafficPredictionResult | null>(null);
   const [isTrafficLoading, setIsTrafficLoading] = useState(false);
 
-  // Itinerary Plan
-  const [itinerary, setItinerary] = useState<ItineraryPlan | null>(null);
+  // Itinerary Plan (starts empty so user can plan by themselves)
+  const [itinerary, setItinerary] = useState<ItineraryPlan | null>(() => ({
+    id: `itinerary-user`,
+    title: 'Custom Travel Itinerary',
+    startingLocation: VIJAYAWADA_ORIGIN,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    totalDestinations: 0,
+    totalEstimatedBudgetINR: 0,
+    days: [
+      {
+        dayNumber: 1,
+        date: 'Day 1',
+        totalDistanceKm: 0,
+        totalDurationMin: 0,
+        items: [],
+      },
+    ],
+  }));
   const [savedTrips, setSavedTrips] = useState<ItineraryPlan[]>([]);
   const [isSavingTrip, setIsSavingTrip] = useState(false);
 
@@ -119,11 +136,10 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // 1. Initial Load: Weather, Saved Trips, Default Itinerary & Traffic
+  // 1. Initial Load: Weather, Saved Trips & Traffic (starts with clean self-planning itinerary)
   useEffect(() => {
     fetchWeather(VIJAYAWADA_ORIGIN.latitude, VIJAYAWADA_ORIGIN.longitude, 'Vijayawada, AP');
     fetchSavedTrips();
-    generateInitialItinerary();
     fetchTrafficPrediction('bandar-road-corridor', preferences.departureTime);
   }, []);
 
@@ -162,27 +178,31 @@ export default function App() {
     }
   };
 
-  const generateInitialItinerary = async () => {
-    try {
-      const resp = await fetch('/api/itineraries/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          origin: VIJAYAWADA_ORIGIN,
-          destinationIds: ['kanakadurga-temple', 'undavalli-caves', 'prakasam-barrage', 'bhavani-island'],
-          tripDurationDays: 1,
-          title: 'Vijayawada Heritage & River Discovery',
-        }),
-      });
-      const data = await resp.json();
-      if (resp.ok && data.success) {
-        setItinerary(data.itinerary);
-        const initDests = data.itinerary.days.flatMap((d: any) => d.items.map((it: any) => it.destination));
-        fetchCostEstimation(initDests, VIJAYAWADA_ORIGIN);
-      }
-    } catch (err) {
-      console.error('Initial itinerary error:', err);
-    }
+  const handleClearItinerary = () => {
+    const freshDays = Array.from({ length: preferences.tripDurationDays || 1 }, (_, i) => ({
+      dayNumber: i + 1,
+      date: `Day ${i + 1}`,
+      totalDistanceKm: 0,
+      totalDurationMin: 0,
+      items: [],
+    }));
+    setItinerary({
+      id: `itinerary-${Date.now()}`,
+      title: `${activeRegion.name} Custom Plan`,
+      startingLocation: preferences.startingLocation,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      totalDestinations: 0,
+      totalEstimatedBudgetINR: 0,
+      days: freshDays,
+    });
+    setCostEstimation(null);
+    showToast('Plan cleared! You can now select and add your favorite spots.');
+  };
+
+  const handleAutoFillItinerary = () => {
+    fetchItineraryForRegion(activeRegion, preferences.startingLocation);
+    showToast(`✨ Generated optimized itinerary for ${activeRegion.name}!`);
   };
 
   const fetchTrafficPrediction = async (segmentId: string, depTime: string) => {
@@ -347,9 +367,7 @@ export default function App() {
       fetchTrafficPrediction(region.corridors[0].id, preferences.departureTime);
     }
 
-    // Generate initial suggested itinerary for this destination
-    fetchItineraryForRegion(region, preferences.startingLocation);
-    showToast(`Destination set to ${region.name} (${region.destinations.length} popular attractions)!`);
+    showToast(`Loaded ${region.destinations.length} popular spots in ${region.name}! Click '+ Add to Plan' on any spot to plan your trip.`);
   };
 
   const fetchItineraryForRegion = async (
@@ -711,7 +729,7 @@ export default function App() {
   const itemsInPlanCount = itinerary ? itinerary.days.reduce((acc, d) => acc + d.items.length, 0) : 0;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
+    <div className="min-h-screen bg-[#fafaf8] flex flex-col text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
       {/* Top Navbar with Language and Currency Selectors */}
       <Navbar
         activeTab={activeTab}
@@ -752,6 +770,8 @@ export default function App() {
           onUpdateDurationDays={handleUpdateTripDuration}
           customBudgetAmount={preferences.customBudgetAmount}
           onUpdateBudgetAmount={handleUpdateCustomBudget}
+          onClearItinerary={handleClearItinerary}
+          onAutoFillPlan={handleAutoFillItinerary}
         />
 
         {/* TAB 1: EXPLORE POPULAR PLACES & ESTIMATE COSTS */}
@@ -777,9 +797,9 @@ export default function App() {
 
             {/* Split Screen Layout: Map & Controls (Left 55%) + Destination Cards & Weather (Right 45%) */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Column: Interactive Map & Live Traffic Card */}
-              <div className="lg:col-span-7 space-y-4" id="interactive-map-section">
-                <div className="h-[480px]">
+              {/* Left Column: Interactive Map & Live Traffic Card (Sticky on Desktop) */}
+              <div className="lg:col-span-7 space-y-4 lg:sticky lg:top-20" id="interactive-map-section">
+                <div className="h-[500px]">
                   <InteractiveMap
                     destinations={destinations}
                     selectedDestination={selectedDestination}
@@ -810,10 +830,10 @@ export default function App() {
               {/* Right Column: Search, Category Filters & Destination Cards */}
               <div className="lg:col-span-5 space-y-4">
                 {/* Search Bar & Category Filters with Gemini AI Discovery */}
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.04)] space-y-3.5">
                   <div className="flex gap-2">
                     <div className="relative flex-1">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                       <input
                         type="text"
                         value={searchQuery}
@@ -827,16 +847,16 @@ export default function App() {
                             handleGeminiSearch();
                           }
                         }}
-                        placeholder="Search any city or place (e.g. Goa, Hyderabad, Paris, Delhi, Jaipur)..."
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Search any destination worldwide (Goa, Paris, Tokyo, Jaipur)..."
+                        className="w-full bg-slate-50/80 border border-slate-200/90 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all placeholder:text-slate-400"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={() => handleGeminiSearch()}
                       disabled={isAiSearching}
-                      className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shrink-0"
-                      title="Search & discover authentic places worldwide using Google Gemini AI"
+                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                      title="Discover authentic spots with Google Gemini AI"
                     >
                       {isAiSearching ? (
                         <>
@@ -846,7 +866,7 @@ export default function App() {
                       ) : (
                         <>
                           <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                          <span>AI Search</span>
+                          <span>AI Discover</span>
                         </>
                       )}
                     </button>
@@ -854,9 +874,9 @@ export default function App() {
 
                   {/* 1-Tap Quick Explore City Hubs */}
                   <div>
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
                       <Globe className="w-3 h-3 text-indigo-500" />
-                      <span>Popular Destinations (1-Click Gemini AI Discovery):</span>
+                      <span>Featured Circuits (1-Click AI Search):</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {[
@@ -864,7 +884,7 @@ export default function App() {
                         { label: 'Hyderabad', query: 'Hyderabad pearls and monuments' },
                         { label: 'Jaipur Palaces', query: 'Jaipur royal palaces' },
                         { label: 'Delhi Heritage', query: 'Delhi historical landmarks' },
-                        { label: 'Kerala Backwaters', query: 'Kerala scenic waterways' },
+                        { label: 'Kerala Scenic', query: 'Kerala scenic waterways' },
                         { label: 'Mumbai Marine', query: 'Mumbai iconic coastal places' },
                         { label: 'Paris Wonders', query: 'Paris famous attractions' },
                         { label: 'Tokyo Highlights', query: 'Tokyo cultural landmarks' },
@@ -877,10 +897,10 @@ export default function App() {
                             setSearchQuery(hub.query);
                             handleGeminiSearch(hub.query);
                           }}
-                          className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer border ${
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer border ${
                             searchQuery.toLowerCase().includes(hub.label.toLowerCase().split(' ')[0])
-                              ? 'bg-indigo-100 text-indigo-900 border-indigo-300 font-semibold'
-                              : 'bg-slate-100 hover:bg-indigo-50 hover:text-indigo-800 text-slate-600 border-slate-200'
+                              ? 'bg-indigo-50 text-indigo-900 border-indigo-200 font-semibold'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200/70'
                           }`}
                         >
                           {hub.label}
@@ -898,10 +918,10 @@ export default function App() {
                           setSelectedCategory(cat);
                           handleSearch(searchQuery, cat);
                         }}
-                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                        className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
                           selectedCategory === cat
-                            ? 'bg-slate-900 text-white font-semibold shadow-xs'
-                            : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                         }`}
                       >
                         {cat}
@@ -912,28 +932,28 @@ export default function App() {
 
                 {/* Gemini AI Searching Indicator */}
                 {isAiSearching && (
-                  <div className="p-3 bg-gradient-to-r from-indigo-50 via-violet-50 to-purple-50 border border-indigo-200 rounded-xl flex items-center gap-2.5 text-xs text-indigo-900 animate-pulse shadow-xs">
+                  <div className="p-3.5 bg-indigo-50/80 border border-indigo-200/80 rounded-2xl flex items-center gap-3 text-xs text-indigo-950 animate-pulse shadow-xs">
                     <Sparkles className="w-4 h-4 text-indigo-600 shrink-0 animate-spin" />
                     <div>
                       <div className="font-bold">Consulting Google Gemini AI for authentic attractions...</div>
-                      <div className="text-[11px] text-indigo-600">Retrieving popular places, verified coordinates, entry fees, and high-res photos.</div>
+                      <div className="text-[11px] text-indigo-600">Retrieving verified coordinates, admission fees, and high-res photos.</div>
                     </div>
                   </div>
                 )}
 
                 {/* Active AI Discovery Banner */}
                 {discoveredCityLabel && !isAiSearching && (
-                  <div className="p-2.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-2 text-xs text-emerald-950 shadow-2xs">
-                    <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="p-3 bg-emerald-50/80 border border-emerald-200/80 rounded-2xl flex items-center justify-between gap-2 text-xs text-emerald-950 shadow-2xs">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       <span className="truncate">
-                        Popular places discovered for <strong className="font-bold">{discoveredCityLabel}</strong> ({destinations.length} spots)
+                        Popular places discovered for <strong className="font-bold text-slate-900">{discoveredCityLabel}</strong> ({destinations.length} spots)
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={handleResetExplore}
-                      className="text-[11px] font-semibold text-emerald-800 hover:text-emerald-950 flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100/70 hover:bg-emerald-100 border border-emerald-300 transition-colors cursor-pointer shrink-0"
+                      className="text-[11px] font-semibold text-emerald-800 hover:text-emerald-950 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100/70 hover:bg-emerald-100 border border-emerald-300 transition-colors cursor-pointer shrink-0"
                     >
                       <RotateCcw className="w-3 h-3" />
                       <span>Reset</span>
@@ -1113,6 +1133,9 @@ export default function App() {
                   customBudgetAmount={preferences.customBudgetAmount}
                   onOpenExportSheet={() => setIsExportModalOpen(true)}
                   onOpenPackingList={() => setIsPackingModalOpen(true)}
+                  onClearItinerary={handleClearItinerary}
+                  onAutoFillPlan={handleAutoFillItinerary}
+                  onNavigateToExplore={() => setActiveTab('explore')}
                 />
               </div>
 

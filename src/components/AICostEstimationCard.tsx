@@ -107,26 +107,26 @@ Plan generated with AI-TRAVELMATE`;
   };
 
   return (
-    <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-950 text-white p-5">
+    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.04)] overflow-hidden">
+      {/* Header Banner - Sleek Dark Slate */}
+      <div className="bg-slate-950 text-white p-5 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-1 rounded bg-indigo-500/30 text-indigo-300">
-                <Sparkles className="w-4 h-4 text-indigo-300" />
+              <span className="p-1 rounded-lg bg-indigo-500/20 text-indigo-400">
+                <Sparkles className="w-4 h-4" />
               </span>
-              <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                {t('costEstimationTitle', 'AI Comprehensive Cost Estimation')}
+              <h3 className="font-display text-base sm:text-lg font-extrabold text-white tracking-tight">
+                {t('costEstimationTitle', 'AI Trip Cost Intelligence')}
               </h3>
               {isAiGenerated && (
-                <span className="text-[10px] uppercase font-bold tracking-wider bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-400/30">
-                  Gemini AI Verified
+                <span className="text-[10px] uppercase font-bold tracking-wider bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-md border border-emerald-400/30">
+                  Gemini Verified
                 </span>
               )}
             </div>
-            <p className="text-xs text-indigo-200 mt-1 max-w-xl">
-              {t('costEstimationSubtitle', 'Granular breakdown of Entrance Fees, Travel Transport, Food & Dining, Accommodation, and Miscellaneous.')}
+            <p className="text-xs text-slate-400 mt-1 max-w-xl">
+              {t('costEstimationSubtitle', 'Granular breakdown of Entrance Tickets, Transit, Food & Dining, Accommodation, and Buffer.')}
             </p>
           </div>
 

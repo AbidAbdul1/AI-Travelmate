@@ -63,14 +63,14 @@ export const TrafficPredictionCard: React.FC<TrafficPredictionCardProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+    <div className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.04)] space-y-4">
       {/* Header with Mandatory Transparency Labeling (FR-34, FR-36) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <h3 className="font-display text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
               <Cpu className="w-4 h-4 text-indigo-600" />
-              Traffic Prediction Component
+              Traffic Intelligence & Transit Speed
             </h3>
             {/* Explicit Data Category Label (FR-34 to FR-36) */}
             <span className="px-2 py-0.5 text-[11px] font-mono font-semibold rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
